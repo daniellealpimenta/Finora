@@ -1,0 +1,304 @@
+"""Sincronização Pluggy -> banco local.
+
+Por conexão (item da Pluggy):
+  1. Atualiza status/instituição do item
+  2. Upsert das contas (saldo, limite)
+  3. Busca as transações da janela [date_from, ∞) e faz upsert por (conta, id externo)
+  4. Remove transações locais da janela que a Pluggy não retornou mais
+     (a Pluggy apaga e recria transações quando data/valor/descrição mudam muito)
+
+Janela: 12 meses no primeiro sync; depois, desde o último sync menos 30 dias
+(para pegar PENDING -> POSTED e correções feitas pelo banco).
+"""
+
+import logging
+import threading
+from dataclasses import dataclass, field
+from datetime import UTC, date, datetime, timedelta, timezone
+from decimal import Decimal
+from typing import Any
+
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
+
+from app.db.models import (
+    Account,
+    AccountType,
+    Category,
+    CategoryKind,
+    Connection,
+    Transaction,
+    TransactionSource,
+    TransactionStatus,
+)
+from app.integrations.pluggy.client import PluggyClient
+from app.services.categories import Categorizer, ensure_categories
+
+logger = logging.getLogger(__name__)
+
+FIRST_SYNC_DAYS = 365
+RESYNC_OVERLAP_DAYS = 30
+# Brasil sem horário de verão desde 2019: datas da Pluggy vêm em UTC (00:00 BRT = 03:00Z)
+BRT = timezone(timedelta(hours=-3))
+
+_ACCOUNT_TYPES = {
+    "CHECKING_ACCOUNT": AccountType.CHECKING,
+    "SAVINGS_ACCOUNT": AccountType.SAVINGS,
+    "CREDIT_CARD": AccountType.CREDIT_CARD,
+}
+
+
+@dataclass
+class SyncResult:
+    connections: int = 0
+    accounts: int = 0
+    created: int = 0
+    updated: int = 0
+    deleted: int = 0
+    errors: list[str] = field(default_factory=list)
+
+
+# --- normalização -----------------------------------------------------------
+
+
+def signed_amount(tx: dict[str, Any]) -> Decimal:
+    """Saída negativa, entrada positiva, para qualquer tipo de conta.
+
+    A Pluggy normaliza `type` (compra no cartão = DEBIT, pagamento da fatura = CREDIT),
+    mas o sinal de `amount` varia entre conta e cartão; por isso usamos `type`.
+    """
+    value = abs(Decimal(str(tx["amount"])))
+    return -value if tx["type"] == "DEBIT" else value
+
+
+_CARD_PAYMENT_PREFIX = "0510"  # categoryId da Pluggy para "Pagamento de cartão de crédito"
+
+
+def _is_card_payment(tx: dict[str, Any]) -> bool:
+    return (tx.get("categoryId") or "").startswith(_CARD_PAYMENT_PREFIX)
+
+
+def card_convention_inverted(txs: list[dict[str, Any]]) -> bool:
+    """Detecta cartão com `type` invertido (compras chegando como CREDIT).
+
+    A documentação diz que compras no cartão vêm como DEBIT, mas o sandbox da Pluggy
+    (e possivelmente alguns conectores) manda o contrário. Compras são a grande maioria
+    das transações de um cartão, então se a maioria (fora pagamentos de fatura) vier
+    como CREDIT, a convenção está invertida.
+    """
+    purchases_like = [t for t in txs if not _is_card_payment(t)]
+    if len(purchases_like) < 3:
+        return False
+    credits = sum(1 for t in purchases_like if t["type"] == "CREDIT")
+    return credits > len(purchases_like) / 2
+
+
+def card_signed_amount(tx: dict[str, Any], inverted: bool) -> Decimal:
+    value = abs(Decimal(str(tx["amount"])))
+    if _is_card_payment(tx):
+        return value  # pagamento da fatura sempre reduz a dívida do cartão
+    amount = signed_amount(tx)
+    return -amount if inverted else amount
+
+
+def local_date(value: str) -> date:
+    dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        return dt.date()
+    return dt.astimezone(BRT).date()
+
+
+def _merchant_name(tx: dict[str, Any]) -> str | None:
+    merchant = tx.get("merchant") or {}
+    return merchant.get("businessName") or merchant.get("name")
+
+
+def _trimmed_raw(tx: dict[str, Any]) -> dict[str, Any]:
+    # Guarda só o útil para análise; paymentData traz CPF/conta de terceiros
+    keys = ("category", "categoryId", "operationType", "creditCardMetadata", "merchant")
+    return {k: tx[k] for k in keys if tx.get(k) is not None}
+
+
+# --- sync -------------------------------------------------------------------
+
+
+def _upsert_account(db: Session, connection: Connection, data: dict[str, Any]) -> Account:
+    account = db.scalar(select(Account).where(Account.external_id == data["id"]))
+    if account is None:
+        account = Account(external_id=data["id"], connection=connection)
+        db.add(account)
+    account.connection = connection
+    account.name = data.get("marketingName") or data.get("name") or "Conta"
+    account.type = _ACCOUNT_TYPES.get(data.get("subtype") or "", AccountType.OTHER)
+    account.currency = data.get("currencyCode") or "BRL"
+    balance = Decimal(str(data.get("balance") or 0))
+    credit = data.get("creditData") or {}
+    if account.type == AccountType.CREDIT_CARD:
+        # Saldo do cartão = valor devido; guardamos negativo (dívida)
+        account.balance = -abs(balance)
+        limit = credit.get("creditLimit")
+        account.credit_limit = Decimal(str(limit)) if limit is not None else None
+    else:
+        account.balance = balance
+    return account
+
+
+def _sync_transactions(
+    db: Session,
+    pluggy: PluggyClient,
+    account: Account,
+    date_from: date,
+    categorizer: Categorizer,
+    kinds: dict[int, CategoryKind],
+    result: SyncResult,
+) -> None:
+    existing = {
+        t.external_id: t
+        for t in db.scalars(
+            select(Transaction).where(
+                Transaction.account_id == account.id,
+                Transaction.source == TransactionSource.PLUGGY,
+                Transaction.date >= date_from,
+            )
+        )
+    }
+    seen: set[str] = set()
+    fetched = list(pluggy.iter_transactions(account.external_id, date_from=date_from))
+    is_card = account.type == AccountType.CREDIT_CARD
+    inverted = is_card and card_convention_inverted(fetched)
+    if inverted:
+        logger.info("Cartão %s com convenção de sinal invertida; corrigindo", account.id)
+
+    for tx in fetched:
+        seen.add(tx["id"])
+        row = existing.get(tx["id"])
+        if row is None:
+            # Pode existir fora da janela (data alterada para trás); busca direto
+            row = db.scalar(
+                select(Transaction).where(
+                    Transaction.account_id == account.id, Transaction.external_id == tx["id"]
+                )
+            )
+        if row is None:
+            row = Transaction(
+                account=account, external_id=tx["id"], source=TransactionSource.PLUGGY
+            )
+            db.add(row)
+            result.created += 1
+        else:
+            result.updated += 1
+
+        row.date = local_date(tx["date"])
+        row.amount = card_signed_amount(tx, inverted) if is_card else signed_amount(tx)
+        row.description = (tx.get("description") or tx.get("descriptionRaw") or "")[:512]
+        row.merchant = _merchant_name(tx)
+        row.provider_category = tx.get("category")
+        row.provider_category_id = tx.get("categoryId")
+        row.status = TransactionStatus(tx.get("status") or "POSTED")
+        meta = tx.get("creditCardMetadata") or {}
+        row.installment_number = meta.get("installmentNumber")
+        row.installment_total = meta.get("totalInstallments")
+        row.raw = _trimmed_raw(tx)
+        if not row.user_categorized:
+            row.category_id = categorizer.categorize(
+                row.description, row.provider_category_id, row.amount, row.merchant
+            )
+        row.is_transfer = kinds.get(row.category_id) == CategoryKind.TRANSFER
+
+    stale = [ext_id for ext_id in existing if ext_id not in seen]
+    if stale:
+        db.execute(
+            delete(Transaction).where(
+                Transaction.account_id == account.id, Transaction.external_id.in_(stale)
+            )
+        )
+        result.deleted += len(stale)
+
+
+def sync_connection(
+    db: Session, pluggy: PluggyClient, connection: Connection, result: SyncResult
+) -> None:
+    started = datetime.now(UTC)
+    item = pluggy.get_item(connection.external_id)
+    connector = item.get("connector") or {}
+    connection.institution_name = connector.get("name") or connection.institution_name
+    connection.institution_logo_url = connector.get("imageUrl")
+    connection.status = item.get("status") or connection.status
+
+    if connection.last_synced_at:
+        date_from = connection.last_synced_at.date() - timedelta(days=RESYNC_OVERLAP_DAYS)
+    else:
+        date_from = started.date() - timedelta(days=FIRST_SYNC_DAYS)
+
+    categorizer = Categorizer(db)
+    kinds = {c.id: c.kind for c in db.scalars(select(Category))}
+    for data in pluggy.list_accounts(connection.external_id):
+        account = _upsert_account(db, connection, data)
+        db.flush()
+        _sync_transactions(db, pluggy, account, date_from, categorizer, kinds, result)
+        result.accounts += 1
+
+    connection.last_synced_at = started
+    connection.last_sync_error = None
+    result.connections += 1
+
+
+def sync_all(db: Session, connection_ids: list[int] | None = None) -> SyncResult:
+    ensure_categories(db)
+    result = SyncResult()
+    query = select(Connection)
+    if connection_ids:
+        query = query.where(Connection.id.in_(connection_ids))
+    connections = list(db.scalars(query))
+    if not connections:
+        return result
+
+    with PluggyClient() as pluggy:
+        for connection in connections:
+            try:
+                sync_connection(db, pluggy, connection, result)
+                db.commit()
+            except Exception as exc:  # uma conexão com erro não derruba as outras
+                db.rollback()
+                logger.exception("Falha ao sincronizar conexão %s", connection.id)
+                message = f"{connection.institution_name}: {exc}"[:1024]
+                connection.last_sync_error = message
+                db.commit()
+                result.errors.append(message)
+    return result
+
+
+# --- estado e execução em segundo plano -------------------------------------
+
+
+@dataclass
+class SyncState:
+    running: bool = False
+    last_started_at: datetime | None = None
+    last_finished_at: datetime | None = None
+    last_result: SyncResult | None = None
+    last_error: str | None = None
+
+
+state = SyncState()
+_lock = threading.Lock()
+
+
+def run_sync(session_factory, connection_ids: list[int] | None = None) -> bool:
+    """Executa o sync se nenhum outro estiver rodando. Retorna False se já havia um."""
+    if not _lock.acquire(blocking=False):
+        return False
+    state.running = True
+    state.last_started_at = datetime.now(UTC)
+    try:
+        with session_factory() as db:
+            state.last_result = sync_all(db, connection_ids)
+            state.last_error = None
+    except Exception as exc:
+        logger.exception("Sync falhou")
+        state.last_error = str(exc)
+    finally:
+        state.running = False
+        state.last_finished_at = datetime.now(UTC)
+        _lock.release()
+    return True
