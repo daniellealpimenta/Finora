@@ -92,11 +92,39 @@ class Account(TimestampMixin, Base):
     # Cartão: vencimento e fechamento da fatura atual (creditData da Pluggy)
     bill_due_date: Mapped[date | None] = mapped_column(Date)
     bill_close_date: Mapped[date | None] = mapped_column(Date)
+    # Cartão: bandeira, categoria, final do número e quanto do limite ainda está livre
+    card_brand: Mapped[str | None] = mapped_column(String(32))  # MASTERCARD, VISA...
+    card_level: Mapped[str | None] = mapped_column(String(32))  # GOLD, PLATINUM...
+    card_number: Mapped[str | None] = mapped_column(String(8))  # últimos dígitos
+    available_credit_limit: Mapped[Decimal | None] = mapped_column(Money)
+    # Parte do limite presa em parcelas que ainda vão entrar nas próximas faturas
+    installments_limit_used: Mapped[Decimal | None] = mapped_column(Money)
+    # Dia de fechamento escolhido pelo usuário (a Pluggy não informa; sem ele, é estimado)
+    closing_day: Mapped[int | None] = mapped_column(Integer)
 
     connection: Mapped[Connection | None] = relationship(back_populates="accounts")
     transactions: Mapped[list["Transaction"]] = relationship(
         back_populates="account", cascade="all, delete-orphan"
     )
+    bills: Mapped[list["CardBill"]] = relationship(
+        back_populates="account", cascade="all, delete-orphan"
+    )
+
+
+class CardBill(Base):
+    """Fatura fechada de um cartão (GET /bills da Pluggy). A fatura aberta não vem daqui:
+    é a soma das compras do cartão que ainda não têm `billId`."""
+
+    __tablename__ = "card_bills"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), index=True)
+    external_id: Mapped[str] = mapped_column(String(128), unique=True)
+    due_date: Mapped[date] = mapped_column(Date)
+    total_amount: Mapped[Decimal] = mapped_column(Money)
+    minimum_payment: Mapped[Decimal | None] = mapped_column(Money)
+
+    account: Mapped[Account] = relationship(back_populates="bills")
 
 
 class Investment(TimestampMixin, Base):
@@ -232,3 +260,13 @@ class Budget(Base):
     limit_amount: Mapped[Decimal] = mapped_column(Money)
 
     __table_args__ = (UniqueConstraint("category_id", "month"),)
+
+
+class AppSetting(Base):
+    """Preferências do usuário guardadas como JSON por chave (ex.: "planning": dízimo, meta do
+    cofrinho e até quando cada entrada fixa conta na previsão)."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict] = mapped_column(JSON)

@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, TriangleAlert } from "lucide-react";
 import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from "react";
 
 import { monthLabel, shiftMonth } from "@/lib/format";
+import { InfoTip } from "./info-tip";
 
 export function cx(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(" ");
@@ -28,17 +29,25 @@ export function CardTitle({
   hint,
   icon,
   color,
+  info,
 }: {
-  children: ReactNode;
+  children: string;
   hint?: ReactNode;
   icon?: LucideIcon;
   color?: string;
+  /** Explicação do card, aberta pelo ícone (i) ao lado do título */
+  info?: ReactNode;
 }) {
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
       <div className="flex items-center gap-2.5">
         {icon && <IconBadge icon={icon} color={color ?? "var(--accent)"} size="sm" />}
         <h2 className="text-[15px] font-semibold">{children}</h2>
+        {info && (
+          <span className="-ml-1.5">
+            <InfoTip label={children}>{info}</InfoTip>
+          </span>
+        )}
       </div>
       {hint && <span className="text-xs text-muted">{hint}</span>}
     </div>
@@ -117,16 +126,31 @@ export function PageHeader({
   );
 }
 
-export function MonthPicker({ value, onChange }: { value: string; onChange: (m: string) => void }) {
+export function MonthPicker({
+  value,
+  onChange,
+  label,
+  caption,
+  unit = "Mês",
+}: {
+  value: string;
+  onChange: (m: string) => void;
+  /** Texto no lugar do nome do mês (ex.: "Ciclo de setembro") */
+  label?: string;
+  /** Linha menor embaixo (ex.: "09/09 a 08/10") */
+  caption?: string;
+  unit?: string;
+}) {
   return (
     <div className="inline-flex items-center gap-1 rounded-control bg-surface p-1">
-      <IconButton label="Mês anterior" onClick={() => onChange(shiftMonth(value, -1))}>
+      <IconButton label={`${unit} anterior`} onClick={() => onChange(shiftMonth(value, -1))}>
         <ChevronLeft />
       </IconButton>
-      <span className="min-w-36 text-center text-sm font-semibold tabular" aria-live="polite">
-        {monthLabel(value)}
+      <span className="grid min-w-40 justify-items-center text-center" aria-live="polite">
+        <span className="text-sm font-semibold tabular">{label ?? monthLabel(value)}</span>
+        {caption && <span className="text-[11px] text-muted tabular">{caption}</span>}
       </span>
-      <IconButton label="Próximo mês" onClick={() => onChange(shiftMonth(value, 1))}>
+      <IconButton label={`Próximo ${unit.toLowerCase()}`} onClick={() => onChange(shiftMonth(value, 1))}>
         <ChevronRight />
       </IconButton>
     </div>

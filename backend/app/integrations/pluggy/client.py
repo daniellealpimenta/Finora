@@ -93,6 +93,19 @@ class PluggyClient:
                 return results
             page += 1
 
+    def list_bills(self, account_id: str) -> list[dict[str, Any]]:
+        """Faturas fechadas de um cartão (GET /bills, paginado), mais recente primeiro."""
+        results: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            data = self._request(
+                "GET", "/bills", params={"accountId": account_id, "page": page, "pageSize": 100}
+            )
+            results.extend(data["results"])
+            if page >= (data.get("totalPages") or 1):
+                return results
+            page += 1
+
     def delete_item(self, item_id: str) -> None:
         """Remove o item na Pluggy (encerra o acesso aos dados dessa conexão)."""
         self._request("DELETE", f"/items/{item_id}")

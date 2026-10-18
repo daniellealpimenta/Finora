@@ -14,7 +14,6 @@ import {
   IconBadge,
   inputClass,
   Meter,
-  MonthPicker,
   PageHeader,
   cx,
 } from "@/components/ui";
@@ -26,7 +25,9 @@ import {
   type Transaction,
   type TransactionPage,
 } from "@/lib/api";
-import { currentMonth, money, monthLabel, percent } from "@/lib/format";
+import { CyclePicker } from "@/components/cycle-picker";
+import { cycleName, useCycle } from "@/lib/cycle";
+import { money, percent } from "@/lib/format";
 import { usePageEnter } from "@/lib/motion";
 import { notify } from "@/lib/signals";
 
@@ -53,7 +54,10 @@ function dayLabel(iso: string) {
 }
 
 export default function TransacoesPage() {
-  const [month, setMonth] = useState(currentMonth);
+  // Ciclo da fatura; "" = todas as transações
+  const { key: cycleKey, setKey: setCycleKey, info: cycle } = useCycle();
+  const [allCycles, setAllCycles] = useState(false);
+  const month = allCycles ? "" : (cycleKey ?? "");
   const [accountId, setAccountId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [q, setQ] = useState("");
@@ -68,7 +72,7 @@ export default function TransacoesPage() {
 
   usePageEnter(root, data !== null);
 
-  // Cards de categoria: gasto de cada uma no mês escolhido
+  // Cards de categoria: gasto de cada uma no ciclo escolhido
   useEffect(() => {
     if (!month) return;
     api<CategoryRow[]>(`/dashboard/categories${qs({ month })}`)
@@ -86,6 +90,7 @@ export default function TransacoesPage() {
   }, []);
 
   const load = useCallback(() => {
+    if (!allCycles && !cycleKey) return; // esperando o ciclo atual
     api<TransactionPage>(
       `/transactions${qs({
         month: month || null,
@@ -98,7 +103,7 @@ export default function TransacoesPage() {
     )
       .then(setData)
       .catch((e) => setError(e.message));
-  }, [month, accountId, categoryId, q, page]);
+  }, [month, allCycles, cycleKey, accountId, categoryId, q, page]);
 
   useEffect(() => {
     const t = setTimeout(load, q ? 250 : 0); // debounce da busca
@@ -128,16 +133,16 @@ export default function TransacoesPage() {
         actions={
           month ? (
             <>
-              <MonthPicker value={month} onChange={(m) => filter(() => setMonth(m))} />
-              <Button variant="ghost" onClick={() => filter(() => setMonth(""))}>
+              <CyclePicker value={month} info={cycle} onChange={(m) => filter(() => setCycleKey(m))} />
+              <Button variant="ghost" onClick={() => filter(() => setAllCycles(true))}>
                 <CalendarRange />
-                Todos os meses
+                Todos os ciclos
               </Button>
             </>
           ) : (
-            <Button onClick={() => filter(() => setMonth(currentMonth()))}>
+            <Button onClick={() => filter(() => setAllCycles(false))}>
               <CalendarRange />
-              Filtrar por mês
+              Filtrar por ciclo
             </Button>
           )
         }
@@ -332,7 +337,7 @@ export default function TransacoesPage() {
   );
 }
 
-/** Categorias do mês como cards: clicar filtra a lista, clicar de novo limpa. */
+/** Categorias do ciclo como cards: clicar filtra a lista, clicar de novo limpa. */
 function CategoryCards({
   month,
   rows,
@@ -354,9 +359,9 @@ function CategoryCards({
       active ? "border-accent outline-2 outline-offset-0 outline-accent" : "border-card-edge",
     );
   return (
-    <section data-enter aria-label={`Gastos por categoria em ${monthLabel(month)}`} className="grid gap-2">
+    <section data-enter aria-label={`Gastos por categoria no ciclo de ${cycleName(month)}`} className="grid gap-2">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-[15px] font-semibold">Categorias de {monthLabel(month).split(" de ")[0].toLowerCase()}</h2>
+        <h2 className="text-[15px] font-semibold">Categorias do ciclo de {cycleName(month)}</h2>
         <span className="text-xs text-muted">clique para filtrar</span>
       </div>
       <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pt-1 pb-2">

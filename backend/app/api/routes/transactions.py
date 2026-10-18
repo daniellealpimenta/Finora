@@ -14,8 +14,8 @@ from app.db.models import (
     Transaction,
     TransactionStatus,
 )
+from app.services import analytics
 from app.services.categories import ensure_categories
-from app.services.periods import month_bounds
 
 router = APIRouter(tags=["transações"])
 
@@ -105,8 +105,8 @@ def list_transactions(
 ) -> TransactionPage:
     filters = []
     if month:
-        start, end = month_bounds(month)
-        filters += [Transaction.date >= start, Transaction.date < end]
+        # Ciclo da fatura: compras no cartão vão para o ciclo em que a fatura delas fecha
+        filters.append(Transaction.id.in_(analytics.transaction_ids_in_cycle(db, month)))
     if account_id:
         filters.append(Transaction.account_id == account_id)
     if category_id:

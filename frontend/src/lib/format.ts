@@ -7,9 +7,31 @@ const brlCompact = new Intl.NumberFormat("pt-BR", {
 });
 const pct = new Intl.NumberFormat("pt-BR", { style: "percent", maximumFractionDigits: 1 });
 
-export const money = (v: string | number) => brl.format(Number(v));
-export const moneyCompact = (v: string | number) => brlCompact.format(Number(v));
-export const percent = (v: number) => pct.format(v);
+/** Valor ausente ou inválido (campo que a API ainda não mandou) vira "—", nunca "NaN". */
+const finite = (v: string | number | null | undefined) => {
+  const n = Number(v);
+  return v === null || v === undefined || v === "" || !Number.isFinite(n) ? null : n;
+};
+
+export const money = (v: string | number | null | undefined) => {
+  const n = finite(v);
+  return n === null ? "—" : brl.format(n);
+};
+export const moneyCompact = (v: string | number | null | undefined) => {
+  const n = finite(v);
+  return n === null ? "—" : brlCompact.format(n);
+};
+export const percent = (v: number) => (Number.isFinite(v) ? pct.format(v) : "—");
+
+const pctFine = new Intl.NumberFormat("pt-BR", { style: "percent", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** Rendimento com sinal e % sobre o aplicado: "+R$ 209,65 (1,09%)" */
+export function earnedText(earned: string | number, applied: string | number) {
+  const e = Number(earned);
+  const a = Number(applied);
+  const share = a > 0 ? ` (${pctFine.format(Math.abs(e) / a)})` : "";
+  return `${e < 0 ? "−" : "+"}${brl.format(Math.abs(e))}${share}`;
+}
 
 /** "2026-10-05" -> "05/10" (sem conversão de fuso: a data já é local) */
 export function shortDate(iso: string) {

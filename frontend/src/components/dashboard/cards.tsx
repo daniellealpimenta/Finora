@@ -2,6 +2,7 @@
 
 import {
   ArrowDownRight,
+  ArrowLeftRight,
   ArrowUpRight,
   CalendarClock,
   ChartColumn,
@@ -19,6 +20,7 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 
 import { CategoryIcon, categoryStyle } from "@/components/category-icon";
+import { InfoTip } from "@/components/info-tip";
 import {
   CASHFLOW_SERIES,
   CashflowChart,
@@ -38,13 +40,30 @@ import {
   Meter,
   Pill,
   STATUS_COLOR,
+  StatusShape,
   cx,
   tone,
   type Status,
 } from "@/components/ui";
 import type { Category, Installment, SavingsPot } from "@/lib/api";
-import { money, monthLabel, percent, shiftMonth, shortDate } from "@/lib/format";
+import { cycleName, cycleRange } from "@/lib/cycle";
+import { earnedText, money, monthLabel, percent, shiftMonth, shortDate } from "@/lib/format";
 import { wiggle } from "@/lib/motion";
+import {
+  INFO_CASHFLOW,
+  INFO_CATEGORIES,
+  INFO_COMMITMENTS,
+  INFO_CURRENT_BALANCE,
+  INFO_FIXED,
+  INFO_HEALTH,
+  INFO_INSTALLMENTS,
+  INFO_MERCHANTS,
+  INFO_MONTH_LEFT,
+  INFO_PACE,
+  INFO_RECURRING,
+  INFO_RESERVE,
+  INFO_SAVINGS,
+} from "./info";
 import type { CategoryRow, Data, Summary } from "./types";
 
 // Limites iguais aos do score do backend (app/services/analytics.py::_health_score)
@@ -58,22 +77,21 @@ const pointsStatus = (points: number, max: number): Status =>
   points / max >= 2 / 3 ? "ok" : points / max >= 1 / 3 ? "warn" : "bad";
 const STATUS_LABEL: Record<Status, string> = { ok: "Boa", warn: "Atenção", bad: "Crítica" };
 
-export const monthName = (m: string) => monthLabel(m).split(" de ")[0].toLowerCase();
 export const intPart = (v: number) =>
-  Math.floor(Math.abs(v)).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
+  Number.isFinite(Number(v)) ? Math.floor(Math.abs(v)).toLocaleString("pt-BR", { maximumFractionDigits: 0 }) : "—";
 export const centsPart = (v: number) =>
-  "," + String(Math.round((Math.abs(v) % 1) * 100) % 100).padStart(2, "0");
+  Number.isFinite(Number(v)) ? "," + String(Math.round((Math.abs(v) % 1) * 100) % 100).padStart(2, "0") : "";
 
 /** Frase-resumo em linguagem natural, só com números da API. */
 export function Story({ data, keyById }: { data: Data; keyById: Map<number, Category> }) {
   const s = data.summary;
-  const prev = monthName(shiftMonth(data.month, -1));
+  const prev = `no ciclo de ${cycleName(shiftMonth(data.month, -1))}`;
   const parts: ReactNode[] = [];
 
   if (s.expense > 0 && s.previous_expense > 0) {
     const change = (s.expense - s.previous_expense) / s.previous_expense;
     if (Math.abs(change) < 0.01) {
-      parts.push(<>Você gastou praticamente o mesmo que em {prev}</>);
+      parts.push(<>Você gastou praticamente o mesmo que {prev}</>);
     } else {
       const less = change < 0;
       parts.push(
@@ -82,7 +100,7 @@ export function Story({ data, keyById }: { data: Data; keyById: Map<number, Cate
           <Mark color={less ? "var(--positive)" : "var(--negative)"}>
             {percent(Math.abs(change))} {less ? "menos" : "mais"}
           </Mark>{" "}
-          que em {prev}
+          que {prev}
         </>,
       );
       // Quando gastou mais, aponta a categoria que mais fugiu da média
@@ -100,15 +118,15 @@ export function Story({ data, keyById }: { data: Data; keyById: Map<number, Cate
       }
     }
   } else if (s.expense > 0) {
-    parts.push(<>Você gastou {money(s.expense)} em {monthName(data.month)}</>);
+    parts.push(<>Você gastou {money(s.expense)} no ciclo de {cycleName(data.month)}</>);
   } else {
-    parts.push(<>Nenhuma despesa registrada em {monthName(data.month)}</>);
+    parts.push(<>Nenhuma despesa registrada no ciclo de {cycleName(data.month)}</>);
   }
 
   if (s.savings_rate !== null && s.savings_rate >= 0) {
     parts.push(
       <>
-        {" "}e guardou <strong className="font-semibold">{percent(s.savings_rate)}</strong> do que entrou.
+        {" "}e gastou <strong className="font-semibold">{percent(1 - s.savings_rate)}</strong> do que entrou.
       </>,
     );
   } else if (s.savings_rate !== null) {
@@ -124,7 +142,7 @@ export function Story({ data, keyById }: { data: Data; keyById: Map<number, Cate
   if (s.projected_expense !== null) {
     parts.push(
       <>
-        {" "}No ritmo atual, as despesas do mês devem chegar a{" "}
+        {" "}No ritmo atual, as despesas do ciclo devem chegar a{" "}
         <strong className="font-semibold">{money(s.projected_expense)}</strong>.
       </>,
     );
@@ -143,19 +161,6 @@ export function Mark({ color, children }: { color: string; children: ReactNode }
   return (
     <span style={tone(color)} className="tint rounded-[5px] px-1.5 font-semibold whitespace-nowrap">
       {children}
-    </span>
-  );
-}
-
-export function delta(current: number, previous: number, month: string, lowerIsBetter: boolean) {
-  const prev = monthName(shiftMonth(month, -1));
-  if (!previous) return <span className="text-muted">sem dados de {prev}</span>;
-  const change = (current - previous) / previous;
-  const arrow = change > 0 ? "▲" : change < 0 ? "▼" : "=";
-  const good = lowerIsBetter ? change <= 0 : change >= 0;
-  return (
-    <span className={cx("font-semibold", good ? "text-positive" : "text-negative")}>
-      {arrow} {percent(Math.abs(change))} vs {prev}
     </span>
   );
 }
@@ -193,18 +198,23 @@ function IndexHeader({
   title,
   status,
   shine,
+  info,
 }: {
   icon: typeof Heart;
   color: string;
   title: string;
   status: Status | null;
   shine?: boolean;
+  info: ReactNode;
 }) {
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="flex items-center gap-2.5">
         <IconBadge icon={icon} color={color} size="sm" />
         <span className="label uppercase">{title}</span>
+        <span className="-ml-1.5">
+          <InfoTip label={title}>{info}</InfoTip>
+        </span>
       </span>
       {status && (
         <Pill status={status} data-pop>
@@ -225,13 +235,13 @@ function IndexHeader({
 export function HealthCard({ health }: { health: Summary["health"] }) {
   const status = healthStatus(health.score);
   const parts = [
-    { label: "Poupança", points: health.savings_points, max: 40 },
+    { label: "Taxa de poupança", points: health.savings_points, max: 40 },
     { label: "Reserva", points: health.reserve_points, max: 30 },
     { label: "Gastos fixos", points: health.commitment_points, max: 30 },
   ];
   return (
     <Card data-enter className="grid content-start gap-4">
-      <IndexHeader icon={Heart} color="var(--cat-care)" title="Saúde financeira" status={status} shine />
+      <IndexHeader icon={Heart} color="var(--cat-care)" title="Saúde financeira" status={status} shine info={INFO_HEALTH} />
       <div className="flex items-center gap-4">
         <svg viewBox="0 0 64 64" className="size-16 shrink-0" aria-hidden>
           <circle cx="32" cy="32" r={RING_RADIUS} fill="none" stroke="var(--surface-2)" strokeWidth="7" />
@@ -276,7 +286,7 @@ export function ReserveCard({ months, avg }: { months: number | null; avg: numbe
     months === null ? null : months >= RESERVE_GOAL_MONTHS ? "ok" : months >= 3 ? "warn" : "bad";
   return (
     <Card data-enter className="grid content-start gap-4">
-      <IndexHeader icon={Shield} color="var(--cat-home)" title="Reserva de emergência" status={status} />
+      <IndexHeader icon={Shield} color="var(--cat-home)" title="Reserva de emergência" status={status} info={INFO_RESERVE} />
       <p className="text-[28px] leading-tight font-light tracking-[-0.02em] tabular">
         {months === null ? (
           <span className="text-xl text-muted">sem dados</span>
@@ -299,7 +309,7 @@ export function ReserveCard({ months, avg }: { months: number | null; avg: numbe
         </div>
       </div>
       <p className="text-[13px] leading-normal text-muted">
-        Quanto tempo o saldo em conta cobre o seu gasto médio ({money(avg)}/mês) se a renda parar.
+        Quanto tempo o saldo em conta mais os cofrinhos cobrem o seu gasto médio ({money(avg)} por ciclo) se a renda parar.
       </p>
     </Card>
   );
@@ -310,11 +320,11 @@ export function FixedCard({ commitment, monthly }: { commitment: number | null; 
     commitment === null ? null : commitment <= FIXED_IDEAL ? "ok" : commitment <= 0.5 ? "warn" : "bad";
   return (
     <Card data-enter className="grid content-start gap-4">
-      <IndexHeader icon={Repeat} color="var(--cat-move)" title="Gastos fixos" status={status} />
+      <IndexHeader icon={Repeat} color="var(--cat-move)" title="Gastos fixos" status={status} info={INFO_FIXED} />
       <p className="text-[28px] leading-tight font-light tracking-[-0.02em] tabular">
         {commitment === null ? money(monthly) : percent(commitment)}
         <span className="text-sm font-medium tracking-normal text-muted">
-          {commitment === null ? " /mês" : " da renda"}
+          {commitment === null ? " por ciclo" : " da renda"}
         </span>
       </p>
       <div className="grid gap-1.5">
@@ -330,7 +340,7 @@ export function FixedCard({ commitment, monthly }: { commitment: number | null; 
         </div>
       </div>
       <p className="text-[13px] leading-normal text-muted">
-        Assinaturas e contas recorrentes somam {money(monthly)} por mês.
+        Assinaturas e contas recorrentes somam {money(monthly)} por ciclo.
         {commitment === null && " Sem receita no período para comparar."}
       </p>
     </Card>
@@ -344,6 +354,7 @@ export function CashflowCard({ data, selected }: { data: CashflowPoint[]; select
       <CardTitle
         icon={ChartColumn}
         color="var(--cat-home)"
+        info={INFO_CASHFLOW}
         hint={
           <Button variant="ghost" className="min-h-8 px-2.5 text-xs" onClick={() => setTable(!table)}>
             {table ? <ChartColumn /> : <Table />}
@@ -358,10 +369,10 @@ export function CashflowCard({ data, selected }: { data: CashflowPoint[]; select
           <table className="w-full text-sm tabular">
             <thead className="text-left text-xs text-muted">
               <tr>
-                <th className="py-1.5 font-medium">Mês</th>
+                <th className="py-1.5 font-medium">Ciclo</th>
                 <th className="py-1.5 text-right font-medium">Receitas</th>
                 <th className="py-1.5 text-right font-medium">Despesas</th>
-                <th className="py-1.5 text-right font-medium">Saldo</th>
+                <th className="py-1.5 text-right font-medium">Diferença</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -382,7 +393,7 @@ export function CashflowCard({ data, selected }: { data: CashflowPoint[]; select
         <>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <Legend series={CASHFLOW_SERIES} />
-            <span className="text-xs text-muted">últimos 12 meses</span>
+            <span className="text-xs text-muted">últimos 12 ciclos</span>
           </div>
           <CashflowChart data={data} selected={selected} />
         </>
@@ -400,12 +411,17 @@ export function CategoriesCard({ rows, keyById }: { rows: CategoryRow[]; keyById
   const max = Math.max(1, ...visible.map((r) => Math.max(r.spent, r.budget ?? 0, r.average)));
   return (
     <Card data-enter>
-      <CardTitle icon={Wallet} color="var(--cat-food)" hint="traço = média dos 3 meses anteriores">
+      <CardTitle
+        icon={Wallet}
+        color="var(--cat-food)"
+        hint="traço = média dos 3 ciclos anteriores"
+        info={INFO_CATEGORIES}
+      >
         Para onde foi o dinheiro
       </CardTitle>
       {visible.length === 0 ? (
         <Empty icon={Wallet} color="var(--cat-food)">
-          Sem gastos neste mês.
+          Sem gastos neste ciclo.
         </Empty>
       ) : (
         <>
@@ -535,21 +551,19 @@ export function RankBadge({ n }: { n: number }) {
   );
 }
 
-// --- Topo: regime de caixa no mês atual, resultado do mês nos meses fechados ------------
+// --- Topo: a conta do ciclo -------------------------------------------------------------
 
-export function HeroCard({
-  data,
-  keyById,
-  isCurrent,
-}: {
-  data: Data;
-  keyById: Map<number, Category>;
-  isCurrent: boolean;
-}) {
+/** Valor grande do topo: livre agora (ciclo atual) ou com quanto o ciclo terminou (encerrados),
+ * que é o que bate com o banco. O resultado do ciclo sozinho vai numa frase embaixo. */
+export const heroValueOf = (s: Summary) => s.flow.ended_with;
+
+export function HeroCard({ data, keyById }: { data: Data; keyById: Map<number, Category> }) {
   const s = data.summary;
-  const value = isCurrent ? s.liquid_balance : s.net;
-  const prev = monthName(shiftMonth(data.month, -1));
-  const prevNet = s.previous_income - s.previous_expense;
+  const f = s.flow;
+  const isCurrent = s.cycle.is_current;
+  const value = heroValueOf(s);
+  const name = cycleName(data.month);
+  const prev = cycleName(shiftMonth(data.month, -1));
   const hasPrev = s.previous_income > 0 || s.previous_expense > 0;
   const over = data.categories.find((r) => r.budget !== null && r.spent > r.budget);
 
@@ -559,18 +573,26 @@ export function HeroCard({
     mood = "worried";
     says = <>{over.category_name} passou do orçamento.</>;
   } else if (isCurrent && hasPrev) {
-    mood = prevNet >= 0 ? "happy" : "worried";
-    says = prevNet >= 0 ? <>{capitalize(prev)} fechou no azul.</> : <>{capitalize(prev)} saiu mais do que entrou.</>;
+    mood = s.previous_result >= 0 ? "happy" : "worried";
+    says =
+      s.previous_result >= 0 ? (
+        <>O ciclo de {prev} fechou no azul.</>
+      ) : (
+        <>No ciclo de {prev} saiu mais do que entrou.</>
+      );
   } else if (!isCurrent) {
-    mood = s.net >= 0 ? "happy" : "worried";
-    says = s.net >= 0 ? "Fechou no azul." : "Saiu mais do que entrou.";
+    mood = f.result >= 0 ? "happy" : "worried";
+    says = f.result >= 0 ? "Fechou no azul." : "Saiu mais do que entrou.";
   }
 
   return (
-    <Card data-enter className="grid gap-6 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+    <Card data-enter className="grid gap-6 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
       <div className="grid content-start gap-3">
-        <p className="label uppercase">
-          {isCurrent ? "Em conta agora" : `${s.net >= 0 ? "Sobrou" : "Faltou"} em ${monthName(data.month)}`}
+        <p className="label flex items-center gap-1 uppercase">
+          {isCurrent ? "Livre agora" : `Terminou o ciclo de ${name} com`}
+          <InfoTip label={isCurrent ? "Livre agora" : "Terminou com"}>
+            {isCurrent ? INFO_CURRENT_BALANCE : INFO_MONTH_LEFT}
+          </InfoTip>
         </p>
         <p
           className={cx(
@@ -586,10 +608,10 @@ export function HeroCard({
             {centsPart(value)}
           </span>
         </p>
-        {isCurrent && (
-          <p className="text-sm text-muted">
-            Saldo das contas correntes, sem contar cofrinhos nem faturas.
-          </p>
+        {isCurrent ? (
+          <InAccountNow summary={s} />
+        ) : (
+          <CycleResult summary={s} />
         )}
         <p className="max-w-[52ch] text-base leading-relaxed">
           {isCurrent ? <CashStory data={data} /> : <Story data={data} keyById={keyById} />}
@@ -600,71 +622,197 @@ export function HeroCard({
           </PilaSays>
         </div>
       </div>
-      <ul className="grid content-start divide-y divide-border">
-        <HeroRow
-          icon={ArrowUpRight}
-          color="var(--positive)"
-          label={`Receitas de ${monthName(data.month)}`}
-          value={money(s.income)}
-          note={delta(s.income, s.previous_income, data.month, false)}
-        />
-        <HeroRow
-          icon={ArrowDownRight}
-          color="var(--negative)"
-          label={`Despesas de ${monthName(data.month)}`}
-          value={money(s.expense)}
-          note={delta(s.expense, s.previous_expense, data.month, true)}
-        />
-        <HeroRow
-          icon={CreditCard}
-          color="var(--cat-move)"
-          label="Faturas abertas"
-          value={money(s.card_debt)}
-          note={
-            <span className="text-muted">
-              {s.next_bill_due ? `próxima vence ${shortDate(s.next_bill_due)}` : "soma dos cartões hoje"}
-            </span>
-          }
-        />
-        <HeroRow
-          icon={PiggyBank}
-          color="var(--positive)"
-          label="Guardado em cofrinhos"
-          value={money(s.invested)}
-          note={<span className="text-muted">conta na reserva</span>}
-        />
-      </ul>
+      <CycleRows data={data} />
     </Card>
   );
 }
 
-const capitalize = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
-/** Mês atual em regime de caixa: como fechou o mês anterior e o que já entrou e saiu. */
+const signed = (v: number) => (v < 0 ? `−${money(-v)}` : `+${money(v)}`);
+
+/** A conta do ciclo, de cima para baixo: começou com, entradas, saídas, terminou com. */
+function CycleRows({ data }: { data: Data }) {
+  const s = data.summary;
+  const f = s.flow;
+  const isCurrent = s.cycle.is_current;
+  const prev = cycleName(shiftMonth(data.month, -1));
+  const soFar = isCurrent ? " até agora" : "";
+  const billNote = f.bills.length
+    ? f.bills
+        .filter((b) => Number(b.amount) > 0)
+        .map((b) => `${b.bank} ${money(b.amount)}${b.status === "open" ? " (aberta)" : ""}`)
+        .join(", ")
+    : "nenhuma fatura fecha neste ciclo";
+  return (
+    <div className="grid content-start gap-3">
+      <ul className="grid content-start divide-y divide-border" aria-label={`Conta do ciclo de ${cycleName(data.month)}`}>
+        <HeroRow
+          icon={Wallet}
+          color="var(--muted)"
+          label="Começou com"
+          value={signed(f.started_with).replace(/^\+/, "")}
+          note={<span className="text-muted">o que sobrou até o ciclo de {prev}</span>}
+        />
+        <HeroRow
+          icon={ArrowUpRight}
+          color="var(--positive)"
+          label={`Entrou na conta${soFar}`}
+          value={`+${money(f.income)}`}
+          note={<span className="text-muted">salário, Pix recebidos e outras receitas</span>}
+        />
+        <HeroRow
+          icon={ArrowDownRight}
+          color="var(--negative)"
+          label="Gastos pela conta"
+          value={`−${money(f.spent)}`}
+          note={<span className="text-muted">Pix, débito e boletos</span>}
+        />
+        <HeroRow
+          icon={CreditCard}
+          color="var(--cat-move)"
+          label={isCurrent ? "Faturas do ciclo até agora" : "Faturas do ciclo"}
+          value={`−${money(f.card_bills)}`}
+          note={<span className="text-muted">{billNote}</span>}
+        />
+        <HeroRow
+          icon={PiggyBank}
+          color="var(--cat-care)"
+          label="Guardado nos cofrinhos"
+          value={f.saved >= 0 ? `−${money(f.saved)}` : `+${money(-f.saved)}`}
+          note={<span className="text-muted">{f.saved >= 0 ? "aportes menos resgates" : "resgatou mais do que guardou"}</span>}
+        />
+        {Math.abs(f.other) >= 0.01 && (
+          <HeroRow
+            icon={ArrowLeftRight}
+            color="var(--muted)"
+            label="Outras transferências"
+            value={signed(f.other)}
+            note={<span className="text-muted">para contas não conectadas</span>}
+          />
+        )}
+        <li className="flex items-center justify-between gap-3 py-3 last:pb-0">
+          <span className="text-sm font-semibold">{isCurrent ? "Livre agora" : "Terminou com"}</span>
+          <span className={cx("text-[17px] font-semibold tabular", f.ended_with < 0 && "text-negative")}>
+            {money(f.ended_with)}
+          </span>
+        </li>
+      </ul>
+      {f.check && <CheckNote check={f.check} />}
+    </div>
+  );
+}
+
+/** Ciclo atual: o saldo real das contas em destaque e a conta que leva dele ao "livre agora". */
+function InAccountNow({ summary: s }: { summary: Summary }) {
+  const reserved = s.liquid_balance - s.flow.ended_with;
+  return (
+    <div className="grid gap-2 rounded-control border border-border p-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <span className="flex items-center gap-2.5">
+          <IconBadge icon={Wallet} color="var(--cat-fun)" size="sm" />
+          <span className="text-sm font-medium">Em conta agora</span>
+        </span>
+        <span
+          className={cx(
+            "text-[clamp(24px,4vw,30px)] leading-tight font-light tracking-[-0.02em] tabular",
+            s.liquid_balance < 0 && "text-negative",
+          )}
+        >
+          {money(s.liquid_balance)}
+        </span>
+      </div>
+      <p className="text-xs leading-relaxed text-muted tabular">
+        {money(s.liquid_balance)} em conta − {money(reserved)} já comprometidos com faturas ={" "}
+        <strong className="font-semibold text-foreground">{money(s.flow.ended_with)} livres</strong>
+        {s.next_bill_due && s.next_bill_amount !== null
+          ? `. Próxima fatura: ${money(s.next_bill_amount)}, vence ${shortDate(s.next_bill_due)}.`
+          : "."}
+      </p>
+      <p className="text-[11px] text-muted">
+        Ciclo de {cycleName(s.cycle.key)}, {cycleRange(s.cycle)}. Cofrinhos ficam fora: {money(s.invested)}.
+      </p>
+    </div>
+  );
+}
+
+/** Conferência do ciclo encerrado com o saldo real do banco no fim dele. */
+function CheckNote({ check }: { check: NonNullable<Summary["flow"]["check"]> }) {
+  const ok = Math.abs(check.difference) < 0.01;
+  return (
+    <p
+      style={tone(ok ? "var(--positive)" : "var(--warning)")}
+      className="tint flex items-start gap-2 rounded-control px-3 py-2 text-xs leading-relaxed"
+    >
+      <StatusShape status={ok ? "ok" : "warn"} className="mt-0.5" />
+      <span>
+        {ok ? "Bate com o banco: " : `Diferença de ${money(Math.abs(check.difference))} com o banco: `}
+        {money(check.balance)} em conta no fim do ciclo
+        {Number(check.unpaid_bills) !== 0 && ` − ${money(check.unpaid_bills)} de faturas ainda a pagar`}
+        {" = "}
+        {money(check.free)}.{!ok && " Pode ser um saque ou um Pix para uma conta que não está conectada."}
+      </span>
+    </p>
+  );
+}
+
+/** Ciclo encerrado: o que o ciclo sozinho fez com o dinheiro, sem misturar com o que já havia. */
+function CycleResult({ summary: s }: { summary: Summary }) {
+  const f = s.flow;
+  const prev = cycleName(shiftMonth(s.cycle.key, -1));
+  const result = Number(f.result);
+  const started = Number(f.started_with);
+  return (
+    <div className="grid gap-1.5 rounded-control border border-border p-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <span className="text-sm font-medium">Resultado do ciclo</span>
+        <Mark color={result >= 0 ? "var(--positive)" : "var(--negative)"}>
+          {result >= 0 ? "+" : "−"}
+          {money(Math.abs(result))}
+        </Mark>
+      </div>
+      <p className="text-xs leading-relaxed text-muted tabular">
+        {result >= 0 ? (
+          <>
+            De {cycleRange(s.cycle)} entrou mais do que saiu: sobraram {money(result)}, que se somaram aos{" "}
+            {money(started)} que você já tinha do ciclo de {prev}.
+          </>
+        ) : started > 0 ? (
+          <>
+            De {cycleRange(s.cycle)} saiu {money(-result)} a mais do que entrou. Esse valor veio dos {money(started)} que
+            tinham sobrado do ciclo de {prev}, por isso o ciclo terminou com {money(f.ended_with)}.
+          </>
+        ) : (
+          <>
+            De {cycleRange(s.cycle)} saiu {money(-result)} a mais do que entrou.
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
+/** Ciclo atual: como fechou o ciclo anterior e o que já entrou e saiu neste. */
 function CashStory({ data }: { data: Data }) {
   const s = data.summary;
-  const prev = monthName(shiftMonth(data.month, -1));
-  const prevNet = s.previous_income - s.previous_expense;
+  const prev = cycleName(shiftMonth(data.month, -1));
   return (
     <>
       {(s.previous_income > 0 || s.previous_expense > 0) && (
         <span>
-          {capitalize(prev)} fechou com{" "}
-          <Mark color={prevNet >= 0 ? "var(--positive)" : "var(--negative)"}>
-            {prevNet >= 0 ? "+" : "−"}
-            {money(Math.abs(prevNet))}
-          </Mark>{" "}
-          entre o que entrou e o que você gastou.{" "}
+          No ciclo de {prev}, {s.previous_result >= 0 ? "sobraram" : "saiu a mais do que entrou"}{" "}
+          <Mark color={s.previous_result >= 0 ? "var(--positive)" : "var(--negative)"}>
+            {money(Math.abs(s.previous_result))}
+          </Mark>
+          , e você começou este ciclo com {money(s.flow.started_with)}.{" "}
         </span>
       )}
       <span>
-        Em {monthName(data.month)}, até agora, entraram <strong className="font-semibold">{money(s.income)}</strong>{" "}
-        e saíram <strong className="font-semibold">{money(s.expense)}</strong>, contando o que já foi para o
-        cartão.
+        Neste ciclo, até agora, entraram <strong className="font-semibold">{money(s.income)}</strong> e você gastou{" "}
+        <strong className="font-semibold">{money(s.expense)}</strong>, contando as compras da fatura.
       </span>
       {s.projected_expense !== null && (
         <span>
-          {" "}No ritmo atual, os gastos do mês chegam a{" "}
+          {" "}No ritmo atual, os gastos do ciclo chegam a{" "}
           <strong className="font-semibold">{money(s.projected_expense)}</strong>.
         </span>
       )}
@@ -674,7 +822,18 @@ function CashStory({ data }: { data: Data }) {
 
 // --- Cofrinhos ---------------------------------------------------------------------------
 
-export function SavingsCard({ pots, looseTotal }: { pots: SavingsPot[]; looseTotal: number }) {
+export function SavingsCard({
+  pots,
+  looseTotal,
+  saved,
+  month,
+}: {
+  pots: SavingsPot[];
+  looseTotal: number;
+  /** Aportes menos resgates no ciclo escolhido (summary.flow.saved) */
+  saved: number;
+  month: string;
+}) {
   const total = pots.reduce((sum, p) => sum + Number(p.balance), 0) + looseTotal;
   const reached = pots.find((p) => p.goal_amount && Number(p.balance) >= Number(p.goal_amount));
   const shown = pots.slice(0, LIST_PREVIEW);
@@ -684,6 +843,7 @@ export function SavingsCard({ pots, looseTotal }: { pots: SavingsPot[]; looseTot
       <CardTitle
         icon={PiggyBank}
         color="var(--cat-care)"
+        info={INFO_SAVINGS}
         hint={
           <Link href="/cofrinhos" className="rounded-chip px-2 py-1 text-xs font-semibold text-accent hover:bg-surface-2">
             Organizar
@@ -700,7 +860,16 @@ export function SavingsCard({ pots, looseTotal }: { pots: SavingsPot[]; looseTot
         </div>
       ) : (
         <>
-          <p className="text-[28px] leading-tight font-light tracking-[-0.02em] tabular">{money(total)}</p>
+          <div className="grid gap-0.5">
+            <p className="text-[28px] leading-tight font-light tracking-[-0.02em] tabular">{money(total)}</p>
+            {Math.abs(saved) >= 0.01 && (
+              <p className={cx("text-xs font-semibold tabular", saved > 0 ? "text-positive" : "text-muted")}>
+                {saved > 0
+                  ? `+${money(saved)} guardados no ciclo de ${cycleName(month)}`
+                  : `${money(-saved)} resgatados no ciclo de ${cycleName(month)}`}
+              </p>
+            )}
+          </div>
           <ul className="grid divide-y divide-border">
             {shown.map((p) => {
               const balance = Number(p.balance);
@@ -717,12 +886,19 @@ export function SavingsCard({ pots, looseTotal }: { pots: SavingsPot[]; looseTot
                     color={goal ? "var(--cat-care)" : "color-mix(in oklab, var(--cat-care) 55%, transparent)"}
                     label={goal ? `${percent(balance / goal)} da meta` : `${percent(balance / total)} do total`}
                   />
-                  <span className="text-xs text-muted tabular">
-                    {goal
-                      ? balance >= goal
-                        ? "Meta atingida"
-                        : `${percent(balance / goal)} da meta de ${money(goal)}`
-                      : `${percent(balance / total)} do total guardado`}
+                  <span className="flex flex-wrap justify-between gap-x-3 text-xs text-muted tabular">
+                    <span>
+                      {goal
+                        ? balance >= goal
+                          ? "Meta atingida"
+                          : `${percent(balance / goal)} da meta de ${money(goal)}`
+                        : `${percent(balance / total)} do total guardado`}
+                    </span>
+                    {Number(p.earned) !== 0 && (
+                      <span className={cx(Number(p.earned) > 0 && "font-semibold text-positive")}>
+                        rendeu {earnedText(p.earned, p.applied)}
+                      </span>
+                    )}
                   </span>
                 </li>
               );
@@ -765,7 +941,7 @@ export function InstallmentsCard({ items, keyById }: { items: Installment[]; key
   const shown = all ? items : items.slice(0, LIST_PREVIEW);
   return (
     <Card data-enter className="grid content-start gap-4">
-      <CardTitle icon={CreditCard} color="var(--cat-move)">
+      <CardTitle icon={CreditCard} color="var(--cat-move)" info={INFO_INSTALLMENTS}>
         Parcelas em andamento
       </CardTitle>
       {items.length === 0 ? (
@@ -841,7 +1017,7 @@ export function InstallmentsCard({ items, keyById }: { items: Installment[]; key
 export function PaceCard({ data }: { data: Data }) {
   return (
     <Card data-enter>
-      <CardTitle icon={Gauge} color="var(--cat-move)" hint="gasto acumulado no mês">
+      <CardTitle icon={Gauge} color="var(--cat-move)" hint="gasto acumulado no ciclo" info={INFO_PACE}>
         Ritmo de gastos
       </CardTitle>
       <div className="mb-3">
@@ -856,11 +1032,16 @@ export function CommitmentsCard({ data }: { data: Data }) {
   if (!data.commitments.some((c) => c.amount > 0)) return null;
   return (
     <Card data-enter>
-      <CardTitle icon={CalendarClock} color="var(--cat-care)" hint="compras parceladas já feitas">
+      <CardTitle
+        icon={CalendarClock}
+        color="var(--cat-care)"
+        hint="compras parceladas já feitas"
+        info={INFO_COMMITMENTS}
+      >
         Compromissos futuros
       </CardTitle>
       <div className="mb-3">
-        <Legend series={[{ key: "amount", label: "Parcelas por mês", color: "var(--cat-move)" }]} />
+        <Legend series={[{ key: "amount", label: "Parcelas por ciclo", color: "var(--cat-move)" }]} />
       </div>
       <CommitmentsChart data={data.commitments} />
     </Card>
@@ -870,13 +1051,13 @@ export function CommitmentsCard({ data }: { data: Data }) {
 export function MerchantsCard({ data }: { data: Data }) {
   return (
     <Card data-enter>
-      <CardTitle icon={Store} color="var(--cat-shop)" hint={monthLabel(data.month)}>
+      <CardTitle icon={Store} color="var(--cat-shop)" hint={`ciclo de ${cycleName(data.month)}`} info={INFO_MERCHANTS}>
         Onde você mais gastou
       </CardTitle>
       <ListRows
         empty={
           <Empty icon={Store} color="var(--cat-shop)">
-            Sem gastos neste mês.
+            Sem gastos neste ciclo.
           </Empty>
         }
         more="estabelecimentos"
@@ -897,13 +1078,18 @@ export function RecurringCard({ data }: { data: Data }) {
   const byName = new Map(data.catalog.map((c) => [c.name, c]));
   return (
     <Card data-enter>
-      <CardTitle icon={Repeat} color="var(--cat-fun)" hint="detectados nos últimos 6 meses">
+      <CardTitle
+        icon={Repeat}
+        color="var(--cat-fun)"
+        hint="detectados nos últimos 6 ciclos"
+        info={INFO_RECURRING}
+      >
         Assinaturas e gastos fixos
       </CardTitle>
       <ListRows
         empty={
           <Empty icon={Repeat} color="var(--cat-fun)">
-            Nenhum gasto recorrente detectado ainda. São precisos 3 meses de histórico.
+            Nenhum gasto recorrente detectado ainda. São precisos 3 ciclos de histórico.
           </Empty>
         }
         more="gastos fixos"

@@ -34,10 +34,11 @@ def tx(id_, amount, type_, category_id=None, date_="2026-10-05T03:00:00.000Z", *
 
 
 class FakePluggy:
-    def __init__(self, accounts, transactions, investments=None):
+    def __init__(self, accounts, transactions, investments=None, bills=None):
         self.accounts = accounts
         self.transactions = transactions  # {account_id: [tx, ...]}
         self.investments = investments or []
+        self.bills = bills or {}  # {account_id: [bill, ...]}
         self.date_from = None
 
     def __enter__(self):
@@ -54,6 +55,9 @@ class FakePluggy:
 
     def list_investments(self, item_id):
         return list(self.investments)
+
+    def list_bills(self, account_id):
+        return list(self.bills.get(account_id, []))
 
     def iter_transactions(self, account_id, date_from=None, date_to=None):
         self.date_from = date_from
@@ -307,14 +311,29 @@ CAIXINHA = {
 def test_sync_brings_cofrinhos_and_card_bill_dates(db, connection, monkeypatch):
     card = {
         **CARD,
+        "number": "5502 **** **** 0023",
         "creditData": {
+            "brand": "MASTERCARD",
+            "level": "PLATINUM",
             "creditLimit": 5000,
+            "availableCreditLimit": 4200,
             "balanceDueDate": "2026-10-20T03:00:00.000Z",
             "balanceCloseDate": "2026-10-13T03:00:00.000Z",
+            "disaggregatedCreditLimits": [
+                {"lineName": "CREDITO_PARCELADO", "usedAmount": 300, "limitAmount": 0}
+            ],
         },
     }
+    bill = {
+        "id": "bill-1",
+        "dueDate": "2026-09-20T00:00:00.000Z",
+        "totalAmount": 650.4,
+        "minimumPaymentAmount": 32.5,
+    }
     resgatado = {**CAIXINHA, "id": "inv-2", "balance": 0, "status": "TOTAL_WITHDRAWAL"}
-    fake = FakePluggy([CHECKING, card], {}, investments=[CAIXINHA, resgatado])
+    fake = FakePluggy(
+        [CHECKING, card], {}, investments=[CAIXINHA, resgatado], bills={"acc-card": [bill]}
+    )
     use_fake(monkeypatch, fake)
 
     result = sync_all(db)
@@ -325,6 +344,17 @@ def test_sync_brings_cofrinhos_and_card_bill_dates(db, connection, monkeypatch):
     card_account = db.scalar(select(Account).where(Account.external_id == "acc-card"))
     assert card_account.bill_due_date == date(2026, 10, 20)
     assert card_account.bill_close_date == date(2026, 10, 13)
+    assert (card_account.card_brand, card_account.card_level, card_account.card_number) == (
+        "MASTERCARD",
+        "PLATINUM",
+        "0023",
+    )
+    assert card_account.available_credit_limit == Decimal("4200")
+    assert card_account.installments_limit_used == Decimal("300")
+    # Vencimento é data pura (00:00Z): não pode voltar um dia ao converter para BRT
+    assert [(b.due_date, b.total_amount) for b in card_account.bills] == [
+        (date(2026, 9, 20), Decimal("650.40"))
+    ]
 
     # A meta é do usuário: o sync atualiza o saldo e não mexe nela
     inv.goal_amount = Decimal("5000")
@@ -405,6 +435,7 @@ def test_pots_api_create_rename_goal_move_and_delete(client, db, connection, aut
             name="CDB",
             type="FIXED_INCOME",
             balance=Decimal("300"),
+            amount_original=Decimal("280"),
         )
     )
     db.commit()
@@ -420,6 +451,7 @@ def test_pots_api_create_rename_goal_move_and_delete(client, db, connection, aut
     assert [(p["name"], Decimal(p["balance"]), p["investments"]) for p in pots] == [
         ("Viagem", Decimal("300"), 1)
     ]
+    assert (Decimal(pots[0]["applied"]), Decimal(pots[0]["earned"])) == (280, 20)
     renamed = client.patch(f"/pots/{pot_id}", json={"name": "Japão"}, headers=auth_headers).json()
     assert renamed["name"] == "Japão" and Decimal(renamed["goal_amount"]) == Decimal("3000")
     no_goal = client.patch(

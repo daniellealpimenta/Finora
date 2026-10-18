@@ -185,14 +185,21 @@ export function CashflowChart({ data, selected }: { data: CashflowPoint[]; selec
   );
 }
 
-// --- Ritmo de gasto: acumulado do mês x mês anterior --------------------------------
+// --- Ritmo de gasto: acumulado do ciclo x ciclo anterior --------------------------------
 
 export const DAILY_SERIES: Series[] = [
-  { key: "current", label: "Este mês", color: "var(--accent)" },
-  { key: "previous", label: "Mês anterior", color: "var(--series-ref)", dashed: true },
+  { key: "current", label: "Este ciclo", color: "var(--accent)" },
+  { key: "previous", label: "Ciclo anterior", color: "var(--series-ref)", dashed: true },
 ];
 
-export type DailyPoint = { day: number; current: number | null; previous: number | null };
+/** `day` = dia do ciclo (1, 2...); `label` = data desse dia no ciclo escolhido ("09/10") */
+export type DailyPoint = {
+  day: number;
+  date: string;
+  label?: string;
+  current: number | null;
+  previous: number | null;
+};
 
 export function DailyChart({ data }: { data: DailyPoint[] }) {
   return (
@@ -201,7 +208,7 @@ export function DailyChart({ data }: { data: DailyPoint[] }) {
         <LineChart data={data} margin={{ left: 4, right: 12, top: 4 }}>
           <CartesianGrid vertical={false} stroke={GRID} />
           <XAxis
-            dataKey="day"
+            dataKey="label"
             tick={AXIS_TICK}
             axisLine={{ stroke: GRID }}
             tickLine={false}
@@ -221,7 +228,7 @@ export function DailyChart({ data }: { data: DailyPoint[] }) {
               <ChartTooltip
                 active={active}
                 payload={payload as TooltipEntry[]}
-                title={`Até o dia ${label}`}
+                title={`Até ${label}`}
                 series={DAILY_SERIES}
               />
             )}

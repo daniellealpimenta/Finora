@@ -8,22 +8,60 @@ from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession
 from app.db.models import Budget, Category, CategoryKind
-from app.services import analytics
-from app.services.periods import month_bounds, month_key
+from app.services import analytics, forecast
+from app.services.periods import month_bounds
 
 router = APIRouter(tags=["dashboard"])
 
 Month = Annotated[str | None, Query(pattern=r"^\d{4}-\d{2}$")]
 
 
-def _month(month: str | None) -> str:
-    return month or month_key(date.today())
+def _month(db: DbSession, month: str | None) -> str:
+    """Chave do ciclo pedido ("2026-09" = ciclo que começa em setembro); padrão: o atual."""
+    return month or analytics.current_cycle(db, date.today())["key"]
+
+
+@router.get("/dashboard/cycle")
+def cycle(_: CurrentUser, db: DbSession, month: Month = None) -> dict:
+    """Início e fim do ciclo (o atual, sem `month`) e o cartão que define os ciclos."""
+    return analytics.current_cycle(db, date.today(), month)
+
+
+@router.get("/dashboard/forecast")
+def cycle_forecast(_: CurrentUser, db: DbSession) -> dict:
+    """Previsão do fim do ciclo atual: livre agora + entradas previstas − saídas previstas."""
+    return forecast.forecast(db, date.today())
+
+
+class IncomeRule(BaseModel):
+    # Último ciclo em que a entrada conta ("2027-02"); null = sem fim
+    until: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}$")
+    ignore: bool = False
+
+
+class PlanningIn(BaseModel):
+    tithe_rate: float = Field(default=0, ge=0, le=1)
+    savings_goal: Decimal = Field(default=Decimal("0"), ge=0)
+    incomes: dict[str, IncomeRule] = Field(default_factory=dict)
+
+
+@router.get("/planning")
+def get_planning(_: CurrentUser, db: DbSession) -> dict:
+    """Preferências da previsão: dízimo, meta do cofrinho e regras das entradas fixas."""
+    return forecast.get_planning(db)
+
+
+@router.put("/planning")
+def put_planning(body: PlanningIn, _: CurrentUser, db: DbSession) -> dict:
+    value = body.model_dump(mode="json")
+    value["savings_goal"] = float(body.savings_goal)
+    return forecast.save_planning(db, value)
 
 
 @router.get("/dashboard/summary")
 def summary(_: CurrentUser, db: DbSession, month: Month = None) -> dict:
-    """KPIs do mês: receitas, despesas, poupança, reserva, comprometimento, score."""
-    return analytics.summary(db, _month(month), date.today())
+    """KPIs do ciclo: a conta do ciclo, receitas, despesas, reserva, score."""
+    return analytics.summary(db, _month(db, month), date.today())
 
 
 @router.get("/dashboard/cashflow")
@@ -33,22 +71,22 @@ def cashflow(
     month: Month = None,
     months: Annotated[int, Query(ge=1, le=36)] = 12,
 ) -> list[dict]:
-    return analytics.cashflow(db, _month(month), months)
+    return analytics.cashflow(db, _month(db, month), months)
 
 
 @router.get("/dashboard/categories")
 def categories(_: CurrentUser, db: DbSession, month: Month = None) -> list[dict]:
-    return analytics.categories_breakdown(db, _month(month))
+    return analytics.categories_breakdown(db, _month(db, month))
 
 
 @router.get("/dashboard/daily")
 def daily(_: CurrentUser, db: DbSession, month: Month = None) -> list[dict]:
-    return analytics.daily(db, _month(month))
+    return analytics.daily(db, _month(db, month))
 
 
 @router.get("/dashboard/merchants")
 def merchants(_: CurrentUser, db: DbSession, month: Month = None) -> list[dict]:
-    return analytics.top_merchants(db, _month(month))
+    return analytics.top_merchants(db, _month(db, month))
 
 
 @router.get("/dashboard/recurring")
@@ -58,7 +96,7 @@ def recurring(_: CurrentUser, db: DbSession) -> list[dict]:
 
 @router.get("/dashboard/commitments")
 def commitments(_: CurrentUser, db: DbSession) -> list[dict]:
-    """Parcelas e lançamentos futuros já contratados, por mês."""
+    """Parcelas e lançamentos futuros já contratados, por ciclo."""
     return analytics.future_commitments(db, date.today())
 
 
@@ -80,7 +118,7 @@ class BudgetIn(BaseModel):
 
 @router.put("/budgets", status_code=status.HTTP_204_NO_CONTENT)
 def set_budget(body: BudgetIn, _: CurrentUser, db: DbSession) -> None:
-    """Define o limite de uma categoria a partir do mês informado (vale para os seguintes)."""
+    """Define o limite de uma categoria a partir do ciclo informado (vale para os seguintes)."""
     category = db.get(Category, body.category_id)
     if category is None or category.kind != CategoryKind.EXPENSE:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Escolha uma categoria de despesa")

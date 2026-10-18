@@ -39,6 +39,9 @@ class PotOut(BaseModel):
     name: str
     goal_amount: Decimal | None
     balance: Decimal
+    # Soma do valor aplicado em cada aplicação; rendeu = saldo - aplicado
+    applied: Decimal
+    earned: Decimal
     investments: int
 
 
@@ -72,12 +75,21 @@ def _investment_out(i: Investment) -> InvestmentOut:
     )
 
 
+def applied_amount(i: Investment) -> Decimal:
+    """Valor aplicado; sem essa informação do banco, assume o saldo (rendimento zero)."""
+    return i.amount_original if i.amount_original is not None else i.balance
+
+
 def _pot_out(pot: SavingsPot) -> PotOut:
+    balance = sum((i.balance for i in pot.investments), Decimal("0"))
+    applied = sum((applied_amount(i) for i in pot.investments), Decimal("0"))
     return PotOut(
         id=pot.id,
         name=pot.name,
         goal_amount=pot.goal_amount,
-        balance=sum((i.balance for i in pot.investments), Decimal("0")),
+        balance=balance,
+        applied=applied,
+        earned=balance - applied,
         investments=len(pot.investments),
     )
 

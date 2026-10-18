@@ -9,9 +9,12 @@ import { Button, Card, CardTitle, IconButton, cx, tone } from "@/components/ui";
 // navegador: é preferência de quem usa, não dado financeiro.
 export type CardId =
   | "hero"
+  | "forecast"
   | "health"
   | "reserve"
   | "fixed"
+  | "bills"
+  | "cards"
   | "savings"
   | "installments"
   | "cashflow"
@@ -24,10 +27,13 @@ export type CardId =
 type Span = "full" | "half" | "third";
 
 export const CARDS: Record<CardId, { title: string; span: Span; color: string }> = {
-  hero: { title: "Em conta agora", span: "full", color: "var(--accent)" },
+  hero: { title: "Conta do ciclo", span: "full", color: "var(--accent)" },
+  forecast: { title: "Previsão do ciclo", span: "full", color: "var(--accent)" },
   health: { title: "Saúde financeira", span: "third", color: "var(--cat-care)" },
   reserve: { title: "Reserva de emergência", span: "third", color: "var(--cat-home)" },
   fixed: { title: "Gastos fixos", span: "third", color: "var(--cat-move)" },
+  bills: { title: "Faturas", span: "half", color: "var(--cat-move)" },
+  cards: { title: "Cartões", span: "half", color: "var(--cat-move)" },
   savings: { title: "Cofrinhos", span: "half", color: "var(--cat-care)" },
   installments: { title: "Parcelas em andamento", span: "half", color: "var(--cat-move)" },
   cashflow: { title: "Receitas e despesas", span: "half", color: "var(--cat-home)" },
@@ -53,9 +59,14 @@ function readLayout(): Layout {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as Layout | null;
     if (saved && Array.isArray(saved.order)) {
-      const known = saved.order.filter((id) => id in CARDS);
-      // Cards que surgirem em versões novas entram no fim
-      const order = [...known, ...DEFAULT_ORDER.filter((id) => !known.includes(id))];
+      const order = saved.order.filter((id) => id in CARDS);
+      // Cards que surgirem em versões novas entram logo depois do card que vem antes deles no
+      // padrão (a Previsão aparece embaixo do topo, não no fim)
+      DEFAULT_ORDER.forEach((id, i) => {
+        if (order.includes(id)) return;
+        const before = DEFAULT_ORDER.slice(0, i).reverse().find((prev) => order.includes(prev));
+        order.splice(before ? order.indexOf(before) + 1 : 0, 0, id);
+      });
       return { order, hidden: (saved.hidden ?? []).filter((id) => id in CARDS) };
     }
   } catch {
@@ -150,7 +161,7 @@ export function PanelGrid({
           >
             {content ?? (
               <Card className="grid min-h-32 place-items-center text-sm text-muted">
-                {CARDS[id].title}: sem dados neste mês
+                {CARDS[id].title}: sem dados neste ciclo
               </Card>
             )}
             {editing && (

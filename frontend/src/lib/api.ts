@@ -80,6 +80,8 @@ export type Account = {
   currency: string;
   bill_due_date: string | null;
   bill_close_date: string | null;
+  /** Cartão: dia de fechamento escolhido pelo usuário (null = estimado pelas faturas) */
+  closing_day: number | null;
 };
 
 /** Aplicação (caixinha, CDB...) que chega da Pluggy (GET /investments). */
@@ -106,7 +108,48 @@ export type SavingsPot = {
   name: string;
   goal_amount: string | null;
   balance: string;
+  /** Soma do valor aplicado; earned = balance - applied */
+  applied: string;
+  earned: string;
   investments: number;
+};
+
+export type BillStatus = "open" | "closed" | "overdue" | "paid";
+
+/** Fatura de cartão: a aberta (calculada) ou uma fechada da Pluggy. */
+export type CardBill = {
+  id: string;
+  status: BillStatus;
+  /** Mês do vencimento ("2026-11" = fatura de novembro) */
+  competence: string;
+  due_date: string | null;
+  /** Fechamento estimado pelo último lançamento; null quando não dá para saber */
+  close_date: string | null;
+  amount: number;
+  minimum_payment: number | null;
+  paid_at: string | null;
+  purchases: number | null;
+};
+
+/** Cartão de crédito com limite e faturas (GET /cards). */
+export type CreditCardInfo = {
+  account_id: number;
+  name: string;
+  bank: string;
+  brand: string | null;
+  level: string | null;
+  number: string | null;
+  credit_limit: number | null;
+  available_limit: number | null;
+  used: number;
+  installments_used: number | null;
+  closing_day: number | null;
+  /** Fechamento estimado pelas faturas (vale quando closing_day é null) */
+  estimated_closing_day: number | null;
+  /** Cartão principal: o fechamento dele define os ciclos */
+  is_cycle_reference: boolean;
+  /** Mais recente primeiro: a aberta, depois as fechadas */
+  bills: CardBill[];
 };
 
 /** Compra parcelada em andamento (GET /dashboard/installments). */

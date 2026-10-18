@@ -3,10 +3,12 @@
 Por conexão (item da Pluggy):
   1. Atualiza status/instituição do item
   2. Upsert das contas (saldo, limite, vencimento da fatura)
+     Cartões: também as faturas fechadas (GET /bills)
   3. Upsert dos investimentos (caixinhas, cofrinhos): o que a Pluggy não devolve mais sai
   4. Busca as transações da janela [date_from, ∞) e faz upsert por (conta, id externo)
   5. Remove transações locais da janela que a Pluggy não retornou mais
      (a Pluggy apaga e recria transações quando data/valor/descrição mudam muito)
+Ao final, `link_transfers` reclassifica os pares (fatura paga x pagamento no cartão).
 
 Janela: 12 meses no primeiro sync; depois, desde o último sync menos 30 dias
 (para pegar PENDING -> POSTED e correções feitas pelo banco).
@@ -25,6 +27,7 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     Account,
     AccountType,
+    CardBill,
     Category,
     CategoryKind,
     Connection,
@@ -35,7 +38,8 @@ from app.db.models import (
     TransactionStatus,
 )
 from app.integrations.pluggy.client import PluggyClient, PluggyError
-from app.services.categories import Categorizer, ensure_categories
+from app.services.cards import short_bank_name
+from app.services.categories import Categorizer, ensure_categories, link_transfers
 
 logger = logging.getLogger(__name__)
 
@@ -144,9 +148,43 @@ def _upsert_account(db: Session, connection: Connection, data: dict[str, Any]) -
         account.credit_limit = Decimal(str(limit)) if limit is not None else None
         account.bill_due_date = _optional_date(credit.get("balanceDueDate"))
         account.bill_close_date = _optional_date(credit.get("balanceCloseDate"))
+        account.card_brand = credit.get("brand")
+        account.card_level = credit.get("level")
+        account.card_number = (data.get("number") or "")[-4:] or None
+        account.available_credit_limit = _optional_decimal(
+            credit.get("availableCreditLimit"), cents=True
+        )
+        account.installments_limit_used = _installments_used(credit)
     else:
         account.balance = balance
     return account
+
+
+def _installments_used(credit: dict[str, Any]) -> Decimal | None:
+    """Quanto do limite está em parcelas futuras (linha CREDITO_PARCELADO do Open Finance)."""
+    for line in credit.get("disaggregatedCreditLimits") or []:
+        if line.get("lineName") == "CREDITO_PARCELADO" and line.get("usedAmount") is not None:
+            return _optional_decimal(line["usedAmount"], cents=True)
+    return None
+
+
+def _sync_bills(db: Session, pluggy: PluggyClient, account: Account) -> None:
+    """Upsert das faturas fechadas do cartão. Se a Pluggy recusar, mantém as que já havia."""
+    try:
+        fetched = pluggy.list_bills(account.external_id)
+    except PluggyError as exc:
+        logger.warning("Faturas indisponíveis para a conta %s: %s", account.id, exc)
+        return
+    existing = {b.external_id: b for b in account.bills}
+    for data in fetched:
+        bill = existing.get(data["id"])
+        if bill is None:
+            bill = CardBill(external_id=data["id"], account=account)
+            db.add(bill)
+        # Data pura em 00:00Z: converter para BRT voltaria um dia
+        bill.due_date = date.fromisoformat(data["dueDate"][:10])
+        bill.total_amount = _optional_decimal(data.get("totalAmount") or 0, cents=True)
+        bill.minimum_payment = _optional_decimal(data.get("minimumPaymentAmount"), cents=True)
 
 
 def _optional_date(value: str | None) -> date | None:
@@ -158,10 +196,6 @@ def _optional_decimal(value: Any, cents: bool = False) -> Decimal | None:
         return None
     number = Decimal(str(value))
     return number.quantize(Decimal("0.01")) if cents else number
-
-
-# Nomes curtos para emissores conhecidos; os demais usam a primeira palavra do emissor
-_ISSUER_NAMES = {"PICPAY": "PicPay", "NU": "Nubank", "MERCADO": "Mercado Pago", "INTER": "Inter"}
 
 
 def _suggested_pot(db: Session, data: dict[str, Any]) -> SavingsPot:
@@ -177,8 +211,7 @@ def _suggested_pot(db: Session, data: dict[str, Any]) -> SavingsPot:
     key = f"{issuer}|{subtype}|{rate}|{rate_type}"[:160]
     pot = db.scalar(select(SavingsPot).where(SavingsPot.auto_key == key))
     if pot is None:
-        first = issuer.split(" ")[0].upper() if issuer else ""
-        who = _ISSUER_NAMES.get(first, issuer.split(" ")[0].title() if issuer else "Cofrinho")
+        who = short_bank_name(issuer) if issuer else "Cofrinho"
         rate_text = (
             f" {Decimal(str(rate)).normalize():f}% do {rate_type}" if rate and rate_type else ""
         )
@@ -326,6 +359,8 @@ def sync_connection(
         account = _upsert_account(db, connection, data)
         db.flush()
         _sync_transactions(db, pluggy, account, date_from, categorizer, kinds, result)
+        if account.type == AccountType.CREDIT_CARD:
+            _sync_bills(db, pluggy, account)
         result.accounts += 1
     _sync_investments(db, pluggy, connection, result)
 
@@ -356,6 +391,9 @@ def sync_all(db: Session, connection_ids: list[int] | None = None) -> SyncResult
                 connection.last_sync_error = message
                 db.commit()
                 result.errors.append(message)
+    # Pares (fatura paga na conta x pagamento no cartão) podem cruzar conexões
+    link_transfers(db)
+    db.commit()
     return result
 
 

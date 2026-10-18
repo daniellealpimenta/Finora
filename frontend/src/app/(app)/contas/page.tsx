@@ -22,6 +22,7 @@ import {
   Card,
   ErrorNote,
   IconBadge,
+  inputClass,
   Meter,
   PageHeader,
   Pill,
@@ -35,6 +36,7 @@ import {
   type Account,
   type AccountType,
   type Connection,
+  type CreditCardInfo,
   type Investment,
   type SyncStatus,
 } from "@/lib/api";
@@ -73,6 +75,7 @@ export default function ContasPage() {
   const [sandbox, setSandbox] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [removing, setRemoving] = useState<Connection | null>(null);
+  const [cards, setCards] = useState<Map<number, CreditCardInfo>>(new Map());
   const fileRef = useRef<HTMLInputElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const syncIcon = useRef<HTMLSpanElement>(null);
@@ -80,12 +83,14 @@ export default function ContasPage() {
   usePageEnter(root, connections !== null);
 
   const load = useCallback(async () => {
-    const [conns, accounts, status, inv] = await Promise.all([
+    const [conns, accounts, status, inv, cardList] = await Promise.all([
       api<Connection[]>("/connections"),
       api<Account[]>("/accounts"),
       api<SyncStatus>("/sync/status"),
       api<Investment[]>("/investments"),
+      api<CreditCardInfo[]>("/cards"),
     ]);
+    setCards(new Map(cardList.map((c) => [c.account_id, c])));
     setConnections(conns);
     setInvestments(inv);
     setManual(accounts.filter((a) => a.connection_id === null));
@@ -96,6 +101,16 @@ export default function ContasPage() {
   useEffect(() => {
     load().catch((e) => setError(String(e.message ?? e)));
   }, [load]);
+
+  async function saveClosingDay(account: Account, day: number | null) {
+    try {
+      await api(`/accounts/${account.id}`, { method: "PATCH", body: JSON.stringify({ closing_day: day }) });
+      await load();
+      notify(day === null ? "Fechamento volta a ser estimado pelas faturas." : `Fechamento no dia ${day} salvo.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   // O disco do cofre no menu e o ícone do botão giram enquanto sincroniza
   const running = Boolean(sync?.running);
@@ -286,7 +301,7 @@ export default function ContasPage() {
                 </Button>
               </div>
               {c.last_sync_error && <ErrorNote>{c.last_sync_error}</ErrorNote>}
-              <AccountList accounts={c.accounts} />
+              <AccountList accounts={c.accounts} cards={cards} onClosingDay={saveClosingDay} />
             </Card>
           );
         })}
@@ -297,7 +312,7 @@ export default function ContasPage() {
               <IconBadge icon={FileUp} color="var(--cat-fin)" />
               <h2 className="font-semibold">Importadas por OFX</h2>
             </div>
-            <AccountList accounts={manual} />
+            <AccountList accounts={manual} cards={cards} onClosingDay={saveClosingDay} />
           </Card>
         )}
 
@@ -387,7 +402,15 @@ function Total({
   );
 }
 
-function AccountList({ accounts }: { accounts: Account[] }) {
+function AccountList({
+  accounts,
+  cards,
+  onClosingDay,
+}: {
+  accounts: Account[];
+  cards: Map<number, CreditCardInfo>;
+  onClosingDay: (account: Account, day: number | null) => Promise<void>;
+}) {
   if (accounts.length === 0)
     return <p className="text-sm text-muted">As contas aparecem depois do primeiro sync.</p>;
   return (
@@ -422,9 +445,106 @@ function AccountList({ accounts }: { accounts: Account[] }) {
                 <p className="text-[11px] text-muted tabular">{percent(used)} do limite usado</p>
               </div>
             )}
+            {isCard && <ClosingDay account={a} card={cards.get(a.id)} onSave={(day) => onClosingDay(a, day)} />}
           </li>
         );
       })}
     </ul>
+  );
+}
+
+/** Dia de fechamento do cartão: o estimado pelas faturas ou o escolhido pelo usuário. */
+function ClosingDay({
+  account,
+  card,
+  onSave,
+}: {
+  account: Account;
+  card: CreditCardInfo | undefined;
+  onSave: (day: number | null) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const day = account.closing_day ?? card?.estimated_closing_day ?? null;
+  const id = `closing-${account.id}`;
+
+  if (editing) {
+    return (
+      <form
+        className="flex flex-wrap items-center gap-2 pl-12"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const value = Number(draft);
+          if (!Number.isInteger(value) || value < 1 || value > 31) {
+            setError("Use um dia entre 1 e 31.");
+            return;
+          }
+          await onSave(value);
+          setError(null);
+          setEditing(false);
+        }}
+      >
+        <label htmlFor={id} className="text-sm text-muted">
+          Fecha no dia
+        </label>
+        <input
+          id={id}
+          autoFocus
+          inputMode="numeric"
+          className={cx(inputClass, "min-h-9 w-20 text-right tabular")}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <Button type="submit" variant="primary" className="min-h-9">
+          Salvar
+        </Button>
+        {account.closing_day !== null && (
+          <Button
+            type="button"
+            variant="ghost"
+            className="min-h-9"
+            onClick={async () => {
+              await onSave(null);
+              setEditing(false);
+            }}
+          >
+            Usar o estimado
+          </Button>
+        )}
+        <Button type="button" variant="ghost" className="min-h-9" onClick={() => setEditing(false)}>
+          Cancelar
+        </Button>
+        {error && <p className="w-full text-xs font-semibold text-negative">{error}</p>}
+      </form>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-12 text-xs text-muted">
+      <span>
+        {day === null ? (
+          "Fechamento desconhecido (sem faturas ainda)"
+        ) : (
+          <>
+            Fecha no dia <strong className="font-semibold text-foreground tabular">{day}</strong>
+            {account.closing_day !== null ? ", definido por você" : ", estimado pelas faturas"}
+          </>
+        )}
+      </span>
+      {card?.is_cycle_reference && (
+        <span className="rounded-full bg-surface-2 px-2 py-0.5 font-semibold text-foreground">define os ciclos</span>
+      )}
+      <button
+        type="button"
+        className="rounded-chip px-1.5 py-0.5 font-semibold text-accent hover:bg-surface-2"
+        onClick={() => {
+          setDraft(day ? String(day) : "");
+          setEditing(true);
+        }}
+      >
+        Ajustar
+      </button>
+    </div>
   );
 }

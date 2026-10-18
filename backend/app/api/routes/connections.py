@@ -3,7 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession
@@ -27,8 +27,14 @@ class AccountOut(BaseModel):
     currency: str
     bill_due_date: date | None
     bill_close_date: date | None
+    # Cartão: dia de fechamento escolhido pelo usuário (null = estimado pelas faturas)
+    closing_day: int | None
 
     model_config = {"from_attributes": True}
+
+
+class AccountUpdate(BaseModel):
+    closing_day: int | None = Field(default=None, ge=1, le=31)
 
 
 class ConnectionOut(BaseModel):
@@ -110,6 +116,18 @@ def delete_connection(
 @router.get("/accounts", response_model=list[AccountOut])
 def list_accounts(_: CurrentUser, db: DbSession) -> list[Account]:
     return list(db.scalars(select(Account).order_by(Account.type, Account.name)))
+
+
+@router.patch("/accounts/{account_id}", response_model=AccountOut)
+def update_account(account_id: int, body: AccountUpdate, _: CurrentUser, db: DbSession) -> Account:
+    """Dia de fechamento do cartão (null volta para o estimado). Muda os ciclos se for o
+    cartão principal."""
+    account = db.get(Account, account_id)
+    if account is None or account.type != AccountType.CREDIT_CARD:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Cartão não encontrado")
+    account.closing_day = body.closing_day
+    db.commit()
+    return account
 
 
 def _sync_status() -> SyncStatus:

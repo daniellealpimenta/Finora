@@ -11,7 +11,6 @@ import {
   Empty,
   ErrorNote,
   Meter,
-  MonthPicker,
   PageHeader,
   Pill,
   STATUS_COLOR,
@@ -20,7 +19,9 @@ import {
   type Status,
 } from "@/components/ui";
 import { api, qs, type Category } from "@/lib/api";
-import { currentMonth, money, monthLabel, percent } from "@/lib/format";
+import { CyclePicker } from "@/components/cycle-picker";
+import { cycleName, useCycle } from "@/lib/cycle";
+import { money, percent } from "@/lib/format";
 import { usePageEnter } from "@/lib/motion";
 import { notify } from "@/lib/signals";
 
@@ -31,7 +32,7 @@ const budgetStatus = (ratio: number): Status => (ratio > 1 ? "bad" : ratio > NEA
 const STATUS_TEXT: Record<Status, string> = { ok: "Dentro", warn: "Perto do limite", bad: "Estourou" };
 
 export default function OrcamentosPage() {
-  const [month, setMonth] = useState(currentMonth);
+  const { key: month, setKey: setMonth, info: cycle } = useCycle();
   const [categories, setCategories] = useState<Category[] | null>(null);
   const [rows, setRows] = useState<Map<number, Row>>(new Map());
   const [drafts, setDrafts] = useState<Record<number, string>>({});
@@ -41,6 +42,7 @@ export default function OrcamentosPage() {
   usePageEnter(root, categories !== null);
 
   const load = useCallback(async () => {
+    if (!month) return;
     const [cats, breakdown] = await Promise.all([
       api<Category[]>("/categories"),
       api<Row[]>(`/dashboard/categories${qs({ month })}`),
@@ -99,8 +101,8 @@ export default function OrcamentosPage() {
     <div ref={root}>
       <PageHeader
         title="Orçamentos"
-        description={`Um limite definido em ${monthLabel(month)} continua valendo nos meses seguintes até você mudar. Deixe em branco para remover.`}
-        actions={<MonthPicker value={month} onChange={setMonth} />}
+        description={`Limites por ciclo da fatura. Um limite definido no ciclo de ${month ? cycleName(month) : "…"} continua valendo nos ciclos seguintes até você mudar. Deixe em branco para remover.`}
+        actions={month && <CyclePicker value={month} info={cycle} onChange={setMonth} />}
       />
 
       <div className="grid gap-4">

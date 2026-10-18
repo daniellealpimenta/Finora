@@ -8,6 +8,7 @@ import { Pila, PilaSays } from "@/components/pila";
 import {
   Button,
   Card,
+  CardTitle,
   ErrorNote,
   IconBadge,
   IconButton,
@@ -18,7 +19,7 @@ import {
   inputClass,
 } from "@/components/ui";
 import { api, type Investment, type SavingsPot } from "@/lib/api";
-import { money, percent } from "@/lib/format";
+import { earnedText, money, percent } from "@/lib/format";
 import { usePageEnter } from "@/lib/motion";
 import { notify } from "@/lib/signals";
 
@@ -120,6 +121,8 @@ export default function CofrinhosPage() {
           </div>
         )}
 
+        {list.length > 0 && <YieldList pots={list} investments={investments} />}
+
         {list.map((pot) => (
           <PotCard
             key={pot.id}
@@ -208,6 +211,82 @@ function Total({ icon, color, label, value }: { icon: typeof PiggyBank; color: s
   );
 }
 
+/** Quanto cada cofrinho rendeu: aplicado, saldo de hoje e a diferença. */
+function YieldList({ pots, investments }: { pots: SavingsPot[]; investments: Investment[] }) {
+  const rows = [...pots].sort((a, b) => Number(b.earned) - Number(a.earned));
+  // Taxa do cofrinho: a das aplicações dele, quando todas têm a mesma
+  const rateOf = (pot: SavingsPot) => {
+    const rates = new Set(investments.filter((i) => i.pot_id === pot.id).map(rateText));
+    return rates.size === 1 ? [...rates][0] : rates.size > 1 ? "taxas variadas" : "";
+  };
+  return (
+    <Card data-enter>
+      <CardTitle
+        icon={TrendingUp}
+        color="var(--positive)"
+        hint="rendimento bruto, antes do IR"
+        info={
+          <>
+            <p>
+              <strong>Rendeu</strong> = saldo de hoje − valor aplicado, somando as aplicações de cada cofrinho. O
+              percentual é sobre o valor aplicado.
+            </p>
+            <p>
+              É o rendimento bruto informado pelo banco: o Imposto de Renda e o IOF só são descontados quando você
+              resgata.
+            </p>
+            <p className="text-muted">Aplicações sem valor aplicado informado pelo banco contam com rendimento zero.</p>
+          </>
+        }
+      >
+        Rendimento por cofrinho
+      </CardTitle>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm tabular">
+          <thead className="text-left text-xs text-muted">
+            <tr>
+              <th className="py-1.5 font-medium">Cofrinho</th>
+              <th className="hidden py-1.5 text-right font-medium sm:table-cell">Aplicado</th>
+              <th className="hidden py-1.5 text-right font-medium sm:table-cell">Saldo</th>
+              <th className="py-1.5 text-right font-medium">Rendeu</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {rows.map((p) => {
+              const earned = Number(p.earned);
+              const rate = rateOf(p);
+              return (
+                <tr key={p.id}>
+                  <td className="py-2.5 pr-3">
+                    <p className="font-medium">{p.name}</p>
+                    <p className="text-xs text-muted">
+                      {rate}
+                      <span className="sm:hidden">
+                        {rate ? ", " : ""}
+                        {money(p.applied)} aplicados
+                      </span>
+                    </p>
+                  </td>
+                  <td className="hidden py-2.5 text-right sm:table-cell">{money(p.applied)}</td>
+                  <td className="hidden py-2.5 text-right sm:table-cell">{money(p.balance)}</td>
+                  <td
+                    className={cx(
+                      "py-2.5 text-right font-semibold whitespace-nowrap",
+                      earned > 0 ? "text-positive" : earned < 0 ? "text-negative" : "text-muted",
+                    )}
+                  >
+                    {earnedText(p.earned, p.applied)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
 function PotCard({
   pot,
   pots,
@@ -276,6 +355,14 @@ function PotCard({
           )}
           <p className="text-xs text-muted">
             {pot.investments} {pot.investments === 1 ? "aplicação" : "aplicações"}
+            {Number(pot.earned) !== 0 && (
+              <>
+                {", rendeu "}
+                <span className={cx("font-semibold tabular", Number(pot.earned) > 0 && "text-positive")}>
+                  {earnedText(pot.earned, pot.applied)}
+                </span>
+              </>
+            )}
           </p>
         </div>
         <p className="text-[28px] leading-tight font-light tracking-[-0.02em] tabular">{money(balance)}</p>
@@ -394,7 +481,17 @@ function Applications({
               <div className="text-left sm:text-right">
                 <p className="font-medium tabular">{money(i.balance)}</p>
                 {original !== null && (
-                  <p className="text-xs text-muted tabular">aplicado {money(original)}</p>
+                  <p className="text-xs text-muted tabular">
+                    aplicado {money(original)}
+                    {Number(i.balance) !== original && (
+                      <>
+                        {", "}
+                        <span className={cx(Number(i.balance) > original && "font-semibold text-positive")}>
+                          {earnedText(Number(i.balance) - original, original)}
+                        </span>
+                      </>
+                    )}
+                  </p>
                 )}
               </div>
               <select
