@@ -78,6 +78,50 @@ export type Account = {
   balance: string;
   credit_limit: string | null;
   currency: string;
+  bill_due_date: string | null;
+  bill_close_date: string | null;
+};
+
+/** Aplicação (caixinha, CDB...) que chega da Pluggy (GET /investments). */
+export type Investment = {
+  id: number;
+  connection_id: number;
+  institution_name: string;
+  name: string;
+  type: string;
+  subtype: string | null;
+  balance: string;
+  currency: string;
+  rate: string | null;
+  rate_type: string | null;
+  amount_original: string | null;
+  purchase_date: string | null;
+  due_date: string | null;
+  pot_id: number | null;
+};
+
+/** Cofrinho montado pelo usuário, juntando aplicações (GET /pots). */
+export type SavingsPot = {
+  id: number;
+  name: string;
+  goal_amount: string | null;
+  balance: string;
+  investments: number;
+};
+
+/** Compra parcelada em andamento (GET /dashboard/installments). */
+export type Installment = {
+  name: string;
+  account_name: string;
+  category_id: number | null;
+  category_name: string;
+  installment_amount: number;
+  total: number;
+  paid: number;
+  remaining: number;
+  remaining_amount: number;
+  first_month: string;
+  last_month: string;
 };
 
 export type Connection = {

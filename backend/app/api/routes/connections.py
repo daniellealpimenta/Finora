@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
@@ -25,6 +25,8 @@ class AccountOut(BaseModel):
     balance: Decimal
     credit_limit: Decimal | None
     currency: str
+    bill_due_date: date | None
+    bill_close_date: date | None
 
     model_config = {"from_attributes": True}
 

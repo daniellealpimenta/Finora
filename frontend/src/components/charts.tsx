@@ -1,9 +1,11 @@
 "use client";
 
+import { useRef } from "react";
 import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -13,19 +15,20 @@ import {
 } from "recharts";
 
 import { money, moneyCompact, monthLabel } from "@/lib/format";
+import { FULL, gsap, useGSAP } from "@/lib/motion";
 
-// Cores vêm dos tokens de globals.css (slots validados para daltonismo, claro e escuro)
-const SERIES_1 = "var(--series-1)";
-const SERIES_2 = "var(--series-2)";
-const SERIES_REF = "var(--series-ref)";
+// Cores dos gráficos: tokens de globals.css (tabela "Gráficos" em MASTER.md)
+const INCOME = "var(--positive)";
+const EXPENSE = "var(--negative)";
 const GRID = "var(--grid)";
 const AXIS_TICK = { fill: "var(--muted)", fontSize: 12 };
+const DIMMED = 0.55;
 
-export type Series = { key: string; label: string; color: string };
+export type Series = { key: string; label: string; color: string; dashed?: boolean };
 
 type TooltipEntry = { dataKey?: string | number; value?: number | string | null };
 
-/** Tooltip: valor em destaque, nome da série depois, marcado por um traço da cor. */
+/** Tooltip: valor em destaque, nome da série depois, marcado pela cor da série. */
 function ChartTooltip({
   active,
   payload,
@@ -39,15 +42,15 @@ function ChartTooltip({
 }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border border-border bg-surface px-3 py-2 text-xs shadow-sm">
-      <p className="mb-1 text-muted">{title}</p>
+    <div className="grid gap-1 rounded-control border border-border bg-surface px-3 py-2 text-xs">
+      <p className="text-muted">{title}</p>
       {series.map((s) => {
         const entry = payload.find((p) => p.dataKey === s.key);
         if (entry?.value === null || entry?.value === undefined) return null;
         return (
           <p key={s.key} className="flex items-center gap-2">
-            <span className="inline-block h-0.5 w-3 rounded" style={{ background: s.color }} />
-            <strong className="text-sm font-medium tabular">{money(entry.value)}</strong>
+            <span className="inline-block h-2.5 w-2.5 rounded-[3px]" style={{ background: s.color }} />
+            <strong className="text-sm font-semibold tabular">{money(entry.value)}</strong>
             <span className="text-muted">{s.label}</span>
           </p>
         );
@@ -56,15 +59,18 @@ function ChartTooltip({
   );
 }
 
-export function Legend({ series, shape }: { series: Series[]; shape: "rect" | "line" }) {
+export function Legend({ series }: { series: Series[] }) {
   return (
     <div className="flex flex-wrap gap-4 text-xs text-muted">
       {series.map((s) => (
         <span key={s.key} className="flex items-center gap-1.5">
-          <span
-            className={shape === "rect" ? "h-2.5 w-2.5 rounded-sm" : "h-0.5 w-3.5 rounded"}
-            style={{ background: s.color }}
-          />
+          {s.dashed ? (
+            <svg width="16" height="4" aria-hidden>
+              <line x1="0" y1="2" x2="16" y2="2" stroke={s.color} strokeWidth="2" strokeDasharray="4 3" />
+            </svg>
+          ) : (
+            <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: s.color }} />
+          )}
           {s.label}
         </span>
       ))}
@@ -72,25 +78,71 @@ export function Legend({ series, shape }: { series: Series[]; shape: "rect" | "l
   );
 }
 
+/**
+ * Barras crescem de baixo, em cascata, uma vez. O Recharts desenha depois de medir o
+ * contêiner, então espera as barras aparecerem (até ~1s) antes de animar.
+ */
+function useBarsEntrance(deps: unknown[]) {
+  const root = useRef<HTMLDivElement>(null);
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+      mm.add(FULL, () => {
+        let tries = 0;
+        const run = () => {
+          const bars = root.current?.querySelectorAll(".recharts-bar-rectangle path");
+          if (!bars?.length) {
+            if (tries++ < 60) gsap.delayedCall(1 / 60, run);
+            return;
+          }
+          gsap.from(bars, {
+            scaleY: 0,
+            transformOrigin: "50% 100%",
+            duration: 0.5,
+            ease: "power3.out",
+            stagger: 0.025,
+          });
+        };
+        run();
+      });
+      return () => mm.revert();
+    },
+    { scope: root, dependencies: deps, revertOnUpdate: true },
+  );
+  return root;
+}
+
 // --- Fluxo de caixa: receitas x despesas por mês -------------------------------------
 
 export const CASHFLOW_SERIES: Series[] = [
-  { key: "income", label: "Receitas", color: SERIES_1 },
-  { key: "expense", label: "Despesas", color: SERIES_2 },
+  { key: "income", label: "Receitas", color: INCOME },
+  { key: "expense", label: "Despesas", color: EXPENSE },
 ];
 
 export type CashflowPoint = { month: string; income: number; expense: number; net: number };
 
-export function CashflowChart({ data }: { data: CashflowPoint[] }) {
+export function CashflowChart({ data, selected }: { data: CashflowPoint[]; selected: string }) {
+  const root = useBarsEntrance([data]);
   return (
-    <div className="h-64">
+    <div ref={root} className="h-64">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} barGap={2} barCategoryGap="28%" margin={{ left: 4, right: 4 }}>
+        <BarChart data={data} barGap={2} barCategoryGap="28%" margin={{ left: 4, right: 4, top: 4 }}>
           <CartesianGrid vertical={false} stroke={GRID} />
           <XAxis
             dataKey="month"
             tickFormatter={(m) => monthLabel(m, "short")}
-            tick={AXIS_TICK}
+            tick={({ x, y, payload }) => (
+              <text
+                x={x}
+                y={Number(y) + 14}
+                textAnchor="middle"
+                fontSize={12}
+                fill={payload.value === selected ? "var(--foreground)" : "var(--muted)"}
+                fontWeight={payload.value === selected ? 700 : 400}
+              >
+                {monthLabel(payload.value, "short")}
+              </text>
+            )}
             axisLine={{ stroke: GRID }}
             tickLine={false}
           />
@@ -118,10 +170,14 @@ export function CashflowChart({ data }: { data: CashflowPoint[] }) {
               dataKey={s.key}
               name={s.label}
               fill={s.color}
-              maxBarSize={24}
+              maxBarSize={22}
               radius={[4, 4, 0, 0]}
               isAnimationActive={false}
-            />
+            >
+              {data.map((d) => (
+                <Cell key={d.month} fillOpacity={d.month === selected ? 1 : DIMMED} />
+              ))}
+            </Bar>
           ))}
         </BarChart>
       </ResponsiveContainer>
@@ -132,8 +188,8 @@ export function CashflowChart({ data }: { data: CashflowPoint[] }) {
 // --- Ritmo de gasto: acumulado do mês x mês anterior --------------------------------
 
 export const DAILY_SERIES: Series[] = [
-  { key: "current", label: "Este mês", color: SERIES_1 },
-  { key: "previous", label: "Mês anterior", color: SERIES_REF },
+  { key: "current", label: "Este mês", color: "var(--accent)" },
+  { key: "previous", label: "Mês anterior", color: "var(--series-ref)", dashed: true },
 ];
 
 export type DailyPoint = { day: number; current: number | null; previous: number | null };
@@ -176,7 +232,8 @@ export function DailyChart({ data }: { data: DailyPoint[] }) {
               dataKey={s.key}
               name={s.label}
               stroke={s.color}
-              strokeWidth={2}
+              strokeWidth={s.dashed ? 1.75 : 2.5}
+              strokeDasharray={s.dashed ? "5 4" : undefined}
               dot={false}
               activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2 }}
               connectNulls={false}
@@ -191,12 +248,16 @@ export function DailyChart({ data }: { data: DailyPoint[] }) {
 
 // --- Compromissos futuros (parcelas): série única ------------------------------------
 
+const COMMITMENT_SERIES: Series[] = [
+  { key: "amount", label: "Parcelas e lançamentos", color: "var(--cat-move)" },
+];
+
 export function CommitmentsChart({ data }: { data: { month: string; amount: number }[] }) {
-  const series: Series[] = [{ key: "amount", label: "Parcelas e lançamentos", color: SERIES_1 }];
+  const root = useBarsEntrance([data]);
   return (
-    <div className="h-44">
+    <div ref={root} className="h-64">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ left: 4, right: 4 }}>
+        <BarChart data={data} margin={{ left: 4, right: 4, top: 4 }}>
           <CartesianGrid vertical={false} stroke={GRID} />
           <XAxis
             dataKey="month"
@@ -219,14 +280,14 @@ export function CommitmentsChart({ data }: { data: { month: string; amount: numb
                 active={active}
                 payload={payload as TooltipEntry[]}
                 title={monthLabel(String(label))}
-                series={series}
+                series={COMMITMENT_SERIES}
               />
             )}
           />
           <Bar
             dataKey="amount"
-            fill={SERIES_1}
-            maxBarSize={24}
+            fill={COMMITMENT_SERIES[0].color}
+            maxBarSize={22}
             radius={[4, 4, 0, 0]}
             isAnimationActive={false}
           />
@@ -235,3 +296,4 @@ export function CommitmentsChart({ data }: { data: { month: string; amount: numb
     </div>
   );
 }
+

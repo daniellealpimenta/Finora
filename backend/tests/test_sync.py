@@ -4,7 +4,16 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from app.db.models import Account, AccountType, Category, Connection, Transaction
+from app.db.models import (
+    Account,
+    AccountType,
+    Category,
+    Connection,
+    Investment,
+    SavingsPot,
+    Transaction,
+)
+from app.integrations.pluggy.client import PluggyError
 from app.services import sync as sync_module
 from app.services.categories import ensure_categories, pluggy_category_key
 from app.services.sync import sync_all
@@ -25,9 +34,10 @@ def tx(id_, amount, type_, category_id=None, date_="2026-10-05T03:00:00.000Z", *
 
 
 class FakePluggy:
-    def __init__(self, accounts, transactions):
+    def __init__(self, accounts, transactions, investments=None):
         self.accounts = accounts
         self.transactions = transactions  # {account_id: [tx, ...]}
+        self.investments = investments or []
         self.date_from = None
 
     def __enter__(self):
@@ -41,6 +51,9 @@ class FakePluggy:
 
     def list_accounts(self, item_id):
         return self.accounts
+
+    def list_investments(self, item_id):
+        return list(self.investments)
 
     def iter_transactions(self, account_id, date_from=None, date_to=None):
         self.date_from = date_from
@@ -272,3 +285,155 @@ def test_rule_matches_merchant_name_on_sync(db, connection, monkeypatch):
     use_fake(monkeypatch, FakePluggy([CHECKING], {"acc-cc": [netflix]}))
     sync_all(db)
     assert cat_key(db, by_ext(db)["nf"]) == "leisure"
+
+
+CAIXINHA = {
+    "id": "inv-1",
+    "name": "Caixinha Reserva",
+    "type": "FIXED_INCOME",
+    "subtype": "CDB",
+    "balance": 2100.5,
+    "currencyCode": "BRL",
+    "status": "ACTIVE",
+    "issuer": "PICPAY INSTITUICAO DE PAGAMENTO S/A",
+    "rate": 110,
+    "rateType": "CDI",
+    "amountOriginal": 2000.0000000001,
+    "purchaseDate": "2026-09-10T03:00:00.000Z",
+    "dueDate": "2029-09-09T03:00:00.000Z",
+}
+
+
+def test_sync_brings_cofrinhos_and_card_bill_dates(db, connection, monkeypatch):
+    card = {
+        **CARD,
+        "creditData": {
+            "creditLimit": 5000,
+            "balanceDueDate": "2026-10-20T03:00:00.000Z",
+            "balanceCloseDate": "2026-10-13T03:00:00.000Z",
+        },
+    }
+    resgatado = {**CAIXINHA, "id": "inv-2", "balance": 0, "status": "TOTAL_WITHDRAWAL"}
+    fake = FakePluggy([CHECKING, card], {}, investments=[CAIXINHA, resgatado])
+    use_fake(monkeypatch, fake)
+
+    result = sync_all(db)
+
+    assert result.errors == [] and result.investments == 1
+    inv = db.scalar(select(Investment))
+    assert (inv.name, inv.subtype, inv.balance) == ("Caixinha Reserva", "CDB", Decimal("2100.50"))
+    card_account = db.scalar(select(Account).where(Account.external_id == "acc-card"))
+    assert card_account.bill_due_date == date(2026, 10, 20)
+    assert card_account.bill_close_date == date(2026, 10, 13)
+
+    # A meta é do usuário: o sync atualiza o saldo e não mexe nela
+    inv.goal_amount = Decimal("5000")
+    db.commit()
+    fake.investments = [{**CAIXINHA, "balance": 2200}]
+    sync_all(db)
+    inv = db.scalar(select(Investment))
+    assert (inv.balance, inv.goal_amount) == (Decimal("2200"), Decimal("5000"))
+
+    # Sumiu da Pluggy (resgatado, encerrado): sai daqui também
+    fake.investments = []
+    sync_all(db)
+    assert db.scalar(select(Investment)) is None
+
+
+def test_investments_unavailable_keeps_existing_and_syncs_the_rest(db, connection, monkeypatch):
+    use_fake(monkeypatch, FakePluggy([CHECKING], {}, investments=[CAIXINHA]))
+    sync_all(db)
+
+    class NoInvestments(FakePluggy):
+        def list_investments(self, item_id):
+            raise PluggyError("GET /investments -> 403: produto não contratado")
+
+    use_fake(monkeypatch, NoInvestments([CHECKING], {"acc-cc": [tx("t1", -50, "DEBIT")]}))
+    result = sync_all(db)
+
+    assert result.errors == [] and result.created == 1
+    assert db.scalar(select(Investment)).balance == Decimal("2100.50")
+
+
+def test_new_deposits_land_in_the_suggested_pot_by_rate(db, connection, monkeypatch):
+    # No PicPay cada depósito vira um CDB separado, todos com o mesmo nome
+    deposito_2 = {
+        **CAIXINHA,
+        "id": "inv-2",
+        "balance": 500,
+        "purchaseDate": "2026-10-05T03:00:00.000Z",
+    }
+    outra_taxa = {**CAIXINHA, "id": "inv-3", "balance": 80, "rate": 102}
+    use_fake(
+        monkeypatch, FakePluggy([CHECKING], {}, investments=[CAIXINHA, deposito_2, outra_taxa])
+    )
+
+    sync_all(db)
+
+    pots = {p.name: p for p in db.scalars(select(SavingsPot))}
+    assert set(pots) == {"PicPay CDB 110% do CDI", "PicPay CDB 102% do CDI"}
+    assert sorted(i.external_id for i in pots["PicPay CDB 110% do CDI"].investments) == [
+        "inv-1",
+        "inv-2",
+    ]
+    inv = db.scalar(select(Investment).where(Investment.external_id == "inv-1"))
+    assert (inv.rate, inv.rate_type, inv.amount_original) == (
+        Decimal("110"),
+        "CDI",
+        Decimal("2000.00"),
+    )
+    assert (inv.purchase_date, inv.due_date) == (date(2026, 9, 10), date(2029, 9, 9))
+
+    # Renomeado pelo usuário, o cofrinho continua recebendo os depósitos com a mesma taxa
+    pots["PicPay CDB 110% do CDI"].name = "Reserva"
+    db.commit()
+    novo = {**CAIXINHA, "id": "inv-4", "balance": 50}
+    use_fake(
+        monkeypatch,
+        FakePluggy([CHECKING], {}, investments=[CAIXINHA, deposito_2, outra_taxa, novo]),
+    )
+    sync_all(db)
+    reserva = db.scalar(select(SavingsPot).where(SavingsPot.name == "Reserva"))
+    assert len(reserva.investments) == 3
+
+
+def test_pots_api_create_rename_goal_move_and_delete(client, db, connection, auth_headers):
+    db.add(
+        Investment(
+            connection_id=connection.id,
+            external_id="i1",
+            name="CDB",
+            type="FIXED_INCOME",
+            balance=Decimal("300"),
+        )
+    )
+    db.commit()
+    inv_id = client.get("/investments", headers=auth_headers).json()[0]["id"]
+
+    pot = client.post("/pots", json={"name": "Viagem", "goal_amount": "3000"}, headers=auth_headers)
+    assert pot.status_code == 201
+    pot_id = pot.json()["id"]
+    moved = client.patch(f"/investments/{inv_id}", json={"pot_id": pot_id}, headers=auth_headers)
+    assert moved.json()["pot_id"] == pot_id
+
+    pots = client.get("/pots", headers=auth_headers).json()
+    assert [(p["name"], Decimal(p["balance"]), p["investments"]) for p in pots] == [
+        ("Viagem", Decimal("300"), 1)
+    ]
+    renamed = client.patch(f"/pots/{pot_id}", json={"name": "Japão"}, headers=auth_headers).json()
+    assert renamed["name"] == "Japão" and Decimal(renamed["goal_amount"]) == Decimal("3000")
+    no_goal = client.patch(
+        f"/pots/{pot_id}", json={"goal_amount": None}, headers=auth_headers
+    ).json()
+    assert no_goal["goal_amount"] is None and no_goal["name"] == "Japão"
+
+    # Apagar o cofrinho não apaga a aplicação: ela fica sem cofrinho
+    assert client.delete(f"/pots/{pot_id}", headers=auth_headers).status_code == 204
+    assert client.get("/investments", headers=auth_headers).json()[0]["pot_id"] is None
+    assert client.patch("/pots/999", json={}, headers=auth_headers).status_code == 404
+    assert (
+        client.patch(
+            f"/investments/{inv_id}", json={"pot_id": 999}, headers=auth_headers
+        ).status_code
+        == 404
+    )

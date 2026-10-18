@@ -1,5 +1,6 @@
+import re
 from functools import lru_cache
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from platformdirs import user_data_dir
 from pydantic import field_validator
@@ -42,6 +43,10 @@ class Settings(BaseSettings):
         """Aceita um caminho de arquivo puro (ex.: C:\\dados\\mf.db) e converte para URL SQLite."""
         if "://" in value:
             return value
+        # Caminho do Windows (C:\\...) vira C:/... em qualquer sistema; no macOS/Linux o Path
+        # comum não entende a barra invertida e o deixaria como está.
+        if re.match(r"^[A-Za-z]:[\\/]", value):
+            return f"sqlite:///{PureWindowsPath(value).as_posix()}"
         return f"sqlite:///{Path(value).expanduser().as_posix()}"
 
     @property

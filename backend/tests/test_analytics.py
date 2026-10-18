@@ -8,6 +8,8 @@ from app.db.models import (
     Account,
     AccountType,
     Category,
+    Connection,
+    Investment,
     Transaction,
     TransactionSource,
     TransactionStatus,
@@ -155,6 +157,87 @@ def test_dashboard_endpoints_respond(client, data, auth_headers):
         "merchants",
         "recurring",
         "commitments",
+        "installments",
     ):
         resp = client.get(f"/dashboard/{path}", params={"month": "2026-10"}, headers=auth_headers)
         assert resp.status_code == 200, (path, resp.text)
+
+
+def test_cash_view_and_cofrinhos_count_in_reserve(db, data):
+    before = analytics.summary(db, "2026-10", TODAY)
+    conn = Connection(external_id="item-x", institution_name="Banco", status="UPDATED")
+    db.add(conn)
+    db.flush()
+    db.add(
+        Investment(
+            connection_id=conn.id,
+            external_id="inv-1",
+            name="Caixinha",
+            type="FIXED_INCOME",
+            balance=Decimal("2000"),
+        )
+    )
+    card = db.scalar(select(Account).where(Account.type == AccountType.CREDIT_CARD))
+    card.bill_due_date = date(2026, 10, 20)
+    db.commit()
+
+    s = analytics.summary(db, "2026-10", TODAY)
+
+    assert s["invested"] == Decimal("2000")
+    # Regime de caixa: 10.000 em conta menos os 500 devidos no cartão
+    assert s["available_now"] == Decimal("9500")
+    assert (s["next_bill_due"], s["next_bill_amount"]) == (date(2026, 10, 20), Decimal("500"))
+    # A reserva passa a contar conta corrente + cofrinhos
+    assert s["emergency_reserve_months"] == pytest.approx(
+        before["emergency_reserve_months"] * 12000 / 10000
+    )
+
+
+def test_installments_progress_for_both_dating_styles(db, data):
+    card = db.scalar(select(Account).where(Account.type == AccountType.CREDIT_CARD))
+    shopping = data["shopping"]
+
+    def parcela(desc, d, amount, status=TransactionStatus.POSTED):
+        number, total = (int(x) for x in desc.rsplit(" ", 1)[1].split("/"))
+        db.add(
+            Transaction(
+                account_id=card.id,
+                external_id=f"p-{desc}",
+                source=TransactionSource.MANUAL,
+                date=d,
+                amount=Decimal(amount),
+                description=desc,
+                category_id=shopping,
+                status=status,
+                installment_number=number,
+                installment_total=total,
+            )
+        )
+
+    # Banco que data cada parcela no mês da fatura (a 3ª está na fatura aberta)
+    parcela("NOTEBOOK 1/6", date(2026, 8, 8), "-506.70")
+    parcela("NOTEBOOK 2/6", date(2026, 9, 10), "-506.66")
+    parcela("NOTEBOOK 3/6", date(2026, 10, 9), "-506.66", TransactionStatus.PENDING)
+    # Banco que manda todas as parcelas com a data da compra
+    parcela("TENIS 1/3", date(2026, 8, 8), "-100")
+    parcela("TENIS 2/3", date(2026, 8, 8), "-100")
+    parcela("TENIS 3/3", date(2026, 8, 8), "-100", TransactionStatus.PENDING)
+    # Já quitada: não aparece
+    parcela("FONE 1/2", date(2026, 5, 3), "-80")
+    parcela("FONE 2/2", date(2026, 6, 3), "-80")
+    # Só a 2/3 aparece, na fatura aberta (a 1ª ficou fora da janela do sync)
+    parcela("CADEIRA 2/3", date(2026, 10, 7), "-150", TransactionStatus.PENDING)
+    db.commit()
+
+    found = {i["name"]: i for i in analytics.installments(db)}
+
+    assert "FONE" not in found
+    notebook = found["NOTEBOOK"]
+    assert (notebook["paid"], notebook["remaining"], notebook["total"]) == (2, 4, 6)
+    assert notebook["remaining_amount"] == Decimal("2026.64")
+    assert (notebook["first_month"], notebook["last_month"]) == ("2026-08", "2027-01")
+    tenis = found["TENIS"]
+    assert (tenis["paid"], tenis["remaining"], tenis["last_month"]) == (2, 1, "2026-10")
+    cadeira = found["CADEIRA"]
+    assert (cadeira["paid"], cadeira["remaining"], cadeira["first_month"]) == (1, 2, "2026-09")
+    assert list(found) == ["NOTEBOOK", "CADEIRA", "TENIS"]  # maior valor que falta primeiro

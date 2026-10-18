@@ -26,6 +26,7 @@ from app.db.models import (
     Budget,
     Category,
     CategoryKind,
+    Investment,
     Transaction,
     TransactionStatus,
 )
@@ -195,7 +196,15 @@ def summary(db: Session, month: str, today: date) -> dict:
 
     accounts = list(db.scalars(select(Account)))
     liquid = sum((a.balance for a in accounts if a.type in LIQUID_ACCOUNTS), ZERO)
-    card_debt = -sum((a.balance for a in accounts if a.type == AccountType.CREDIT_CARD), ZERO)
+    cards = [a for a in accounts if a.type == AccountType.CREDIT_CARD]
+    card_debt = -sum((a.balance for a in cards), ZERO)
+    # Caixinhas e cofrinhos: dinheiro guardado, fora do que está livre para gastar
+    invested = sum((i.balance for i in db.scalars(select(Investment))), ZERO)
+    # Próxima fatura a vencer (a mais próxima de hoje entre os cartões com saldo devedor)
+    upcoming = sorted(
+        (a for a in cards if a.bill_due_date and a.bill_due_date >= today and a.balance < 0),
+        key=lambda a: a.bill_due_date,
+    )
 
     avg_expense = _avg_expense(db, start)
     avg_income = _avg_income(db, start)
@@ -217,7 +226,7 @@ def summary(db: Session, month: str, today: date) -> dict:
         ).quantize(Decimal("0.01"))
 
     savings_rate = _ratio(income - expense, income)
-    reserve_months = _ratio(liquid, avg_expense)
+    reserve_months = _ratio(liquid + invested, avg_expense)
     commitment = _ratio(fixed_monthly, avg_income or income)
 
     return {
@@ -231,6 +240,11 @@ def summary(db: Session, month: str, today: date) -> dict:
         "projected_expense": projected,
         "liquid_balance": liquid,
         "card_debt": card_debt,
+        "invested": invested,
+        # Regime de caixa: o que está em conta hoje menos o que já é devido no cartão
+        "available_now": liquid - card_debt,
+        "next_bill_due": upcoming[0].bill_due_date if upcoming else None,
+        "next_bill_amount": -upcoming[0].balance if upcoming else None,
         "avg_monthly_expense": avg_expense,
         "avg_monthly_income": avg_income,
         "emergency_reserve_months": reserve_months,
@@ -362,3 +376,71 @@ def future_commitments(db: Session, today: date, months: int = 6) -> list[dict]:
         }
         for i in range(months + 1)
     ]
+
+
+# --- parcelamentos ---------------------------------------------------------------------
+
+_INSTALLMENT_MARK = re.compile(r"\s*(parc(ela)?\.?\s*)?\d{1,2}\s*/\s*\d{1,2}\b", re.IGNORECASE)
+
+
+def installments(db: Session) -> list[dict]:
+    """Compras parceladas ainda em andamento: quantas parcelas foram, quantas faltam.
+
+    Cada parcela chega como uma transação ("LOJA 2/6"); agrupamos por conta + descrição
+    sem o "2/6" + total de parcelas. Pagas = maior número já lançado (POSTED); a parcela
+    da fatura aberta chega PENDING e ainda conta como a pagar. Bancos datam as parcelas de
+    jeitos diferentes (mês de cada fatura, ou todas na data da compra), então o mês final
+    é uma estimativa.
+    """
+    query = (
+        select(Transaction, Account, Category)
+        .join(Account, Transaction.account_id == Account.id)
+        .join(Category, Transaction.category_id == Category.id, isouter=True)
+        .where(Transaction.installment_total > 1)
+    )
+    groups: dict[tuple, list[tuple[Transaction, Account, Category | None]]] = defaultdict(list)
+    for t, a, c in db.execute(query):
+        if c is not None and c.kind != CategoryKind.EXPENSE:
+            continue
+        key = (a.id, _normalize(t.merchant or t.description), t.installment_total)
+        groups[key].append((t, a, c))
+
+    result = []
+    for (_, _, total), rows in groups.items():
+        # Parcela n lançada = n pagas; parcela n na fatura aberta (PENDING) = n - 1 pagas
+        progress = [
+            (t.installment_number or 0) - (0 if t.status == TransactionStatus.POSTED else 1)
+            for t, _, _ in rows
+        ]
+        paid = min(max(max(progress), 0), total)
+        remaining = total - paid
+        if remaining <= 0:
+            continue
+        latest_tx, account, category = max(
+            rows, key=lambda r: (r[0].installment_number or 0, r[0].date)
+        )
+        first_tx = min(rows, key=lambda r: r[0].installment_number or 0)[0]
+        # Datas diferentes por parcela = datadas pela fatura: volta até a 1ª parcela. Com
+        # uma parcela só não dá para saber; datar pela fatura é o mais comum.
+        dated_per_bill = len(rows) == 1 or len({t.date for t, _, _ in rows}) > 1
+        first_month = date(first_tx.date.year, first_tx.date.month, 1)
+        if dated_per_bill:
+            first_month = add_months(first_month, -((first_tx.installment_number or 1) - 1))
+        amount = abs(latest_tx.amount)
+        label = latest_tx.merchant or latest_tx.description
+        result.append(
+            {
+                "name": _INSTALLMENT_MARK.sub("", label).strip() or label,
+                "account_name": account.name,
+                "category_id": category.id if category else None,
+                "category_name": category.name if category else "Sem categoria",
+                "installment_amount": amount,
+                "total": total,
+                "paid": paid,
+                "remaining": remaining,
+                "remaining_amount": (amount * remaining).quantize(Decimal("0.01")),
+                "first_month": month_key(first_month),
+                "last_month": month_key(add_months(first_month, total - 1)),
+            }
+        )
+    return sorted(result, key=lambda x: x["remaining_amount"], reverse=True)

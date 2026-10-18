@@ -1,3 +1,5 @@
+import os
+import re
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -12,12 +14,25 @@ class Base(DeclarativeBase):
     pass
 
 
+def _refuse_windows_path_elsewhere(database: str) -> None:
+    """Fora do Windows, "C:/..." vira uma pasta relativa chamada "C:" (já aconteceu: o
+    banco foi parar dentro do projeto, numa pasta sincronizada com o iCloud). Melhor não
+    subir e dizer o porquê."""
+    if os.name != "nt" and re.match(r"^[A-Za-z]:[\\/]", database):
+        raise RuntimeError(
+            f"DATABASE_URL aponta para um caminho do Windows ({database}) neste sistema. "
+            "Remova a variável (unset DATABASE_URL) ou o DATABASE_URL do .env para usar a "
+            "pasta padrão, ou informe um caminho deste computador."
+        )
+
+
 def _create_engine(url: str) -> Engine:
     parsed = make_url(url)
     if parsed.get_backend_name() != "sqlite":
         return create_engine(url, pool_pre_ping=True)
 
     if parsed.database and parsed.database != ":memory:":
+        _refuse_windows_path_elsewhere(parsed.database)
         Path(parsed.database).parent.mkdir(parents=True, exist_ok=True)
 
     sqlite_engine = create_engine(url, connect_args={"check_same_thread": False})

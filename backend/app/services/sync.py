@@ -2,9 +2,10 @@
 
 Por conexão (item da Pluggy):
   1. Atualiza status/instituição do item
-  2. Upsert das contas (saldo, limite)
-  3. Busca as transações da janela [date_from, ∞) e faz upsert por (conta, id externo)
-  4. Remove transações locais da janela que a Pluggy não retornou mais
+  2. Upsert das contas (saldo, limite, vencimento da fatura)
+  3. Upsert dos investimentos (caixinhas, cofrinhos): o que a Pluggy não devolve mais sai
+  4. Busca as transações da janela [date_from, ∞) e faz upsert por (conta, id externo)
+  5. Remove transações locais da janela que a Pluggy não retornou mais
      (a Pluggy apaga e recria transações quando data/valor/descrição mudam muito)
 
 Janela: 12 meses no primeiro sync; depois, desde o último sync menos 30 dias
@@ -27,11 +28,13 @@ from app.db.models import (
     Category,
     CategoryKind,
     Connection,
+    Investment,
+    SavingsPot,
     Transaction,
     TransactionSource,
     TransactionStatus,
 )
-from app.integrations.pluggy.client import PluggyClient
+from app.integrations.pluggy.client import PluggyClient, PluggyError
 from app.services.categories import Categorizer, ensure_categories
 
 logger = logging.getLogger(__name__)
@@ -52,6 +55,7 @@ _ACCOUNT_TYPES = {
 class SyncResult:
     connections: int = 0
     accounts: int = 0
+    investments: int = 0
     created: int = 0
     updated: int = 0
     deleted: int = 0
@@ -138,9 +142,95 @@ def _upsert_account(db: Session, connection: Connection, data: dict[str, Any]) -
         account.balance = -abs(balance)
         limit = credit.get("creditLimit")
         account.credit_limit = Decimal(str(limit)) if limit is not None else None
+        account.bill_due_date = _optional_date(credit.get("balanceDueDate"))
+        account.bill_close_date = _optional_date(credit.get("balanceCloseDate"))
     else:
         account.balance = balance
     return account
+
+
+def _optional_date(value: str | None) -> date | None:
+    return local_date(value) if value else None
+
+
+def _optional_decimal(value: Any, cents: bool = False) -> Decimal | None:
+    if value is None:
+        return None
+    number = Decimal(str(value))
+    return number.quantize(Decimal("0.01")) if cents else number
+
+
+# Nomes curtos para emissores conhecidos; os demais usam a primeira palavra do emissor
+_ISSUER_NAMES = {"PICPAY": "PicPay", "NU": "Nubank", "MERCADO": "Mercado Pago", "INTER": "Inter"}
+
+
+def _suggested_pot(db: Session, data: dict[str, Any]) -> SavingsPot:
+    """Cofrinho sugerido para uma aplicação nova: mesmo emissor, produto e taxa.
+
+    O Open Finance não traz o nome que o usuário deu ao cofrinho no app do banco, e cada
+    depósito chega como uma aplicação separada. A taxa é o que melhor distingue um
+    cofrinho do outro; o usuário renomeia, junta ou separa depois.
+    """
+    issuer = (data.get("issuer") or "").strip()
+    subtype = data.get("subtype") or data.get("type") or "Investimento"
+    rate, rate_type = data.get("rate"), data.get("rateType")
+    key = f"{issuer}|{subtype}|{rate}|{rate_type}"[:160]
+    pot = db.scalar(select(SavingsPot).where(SavingsPot.auto_key == key))
+    if pot is None:
+        first = issuer.split(" ")[0].upper() if issuer else ""
+        who = _ISSUER_NAMES.get(first, issuer.split(" ")[0].title() if issuer else "Cofrinho")
+        rate_text = (
+            f" {Decimal(str(rate)).normalize():f}% do {rate_type}" if rate and rate_type else ""
+        )
+        pot = SavingsPot(name=f"{who} {subtype}{rate_text}"[:100], auto_key=key)
+        db.add(pot)
+        db.flush()
+    return pot
+
+
+# Resgatado por inteiro: some do app (o saldo é zero e não volta)
+_CLOSED_INVESTMENT = "TOTAL_WITHDRAWAL"
+
+
+def _sync_investments(
+    db: Session, pluggy: PluggyClient, connection: Connection, result: SyncResult
+) -> None:
+    """Upsert dos investimentos do item. Se a Pluggy recusar (conector sem o produto
+    INVESTMENTS, por exemplo), mantém o que já havia e segue com as transações."""
+    try:
+        fetched = pluggy.list_investments(connection.external_id)
+    except PluggyError as exc:
+        logger.warning("Investimentos indisponíveis para a conexão %s: %s", connection.id, exc)
+        return
+
+    existing = {i.external_id: i for i in connection.investments}
+    seen: set[str] = set()
+    for data in fetched:
+        if data.get("status") == _CLOSED_INVESTMENT:
+            continue
+        seen.add(data["id"])
+        item = existing.get(data["id"])
+        is_new = item is None
+        if is_new:
+            item = Investment(external_id=data["id"], connection=connection)
+            db.add(item)
+        item.name = (data.get("name") or "Investimento")[:255]
+        item.type = data.get("type") or "OTHER"
+        item.subtype = data.get("subtype")
+        item.balance = Decimal(str(data.get("balance") or 0))
+        item.currency = data.get("currencyCode") or "BRL"
+        item.status = data.get("status")
+        item.rate = _optional_decimal(data.get("rate"))
+        item.rate_type = data.get("rateType")
+        item.amount_original = _optional_decimal(data.get("amountOriginal"), cents=True)
+        item.purchase_date = _optional_date(data.get("purchaseDate"))
+        item.due_date = _optional_date(data.get("dueDate"))
+        if is_new:
+            item.pot = _suggested_pot(db, data)
+        result.investments += 1
+    for external_id, item in existing.items():
+        if external_id not in seen:
+            db.delete(item)
 
 
 def _sync_transactions(
@@ -237,6 +327,7 @@ def sync_connection(
         db.flush()
         _sync_transactions(db, pluggy, account, date_from, categorizer, kinds, result)
         result.accounts += 1
+    _sync_investments(db, pluggy, connection, result)
 
     connection.last_synced_at = started
     connection.last_sync_error = None

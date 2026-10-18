@@ -1,13 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { ArrowDownRight, ArrowUpRight, CalendarRange, List, Search } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import { CategoryIcon, categoryStyle } from "@/components/category-icon";
+import type { CategoryRow } from "@/components/dashboard/types";
+import { Dialog } from "@/components/dialog";
 import {
   Button,
   Card,
   Empty,
   ErrorNote,
+  IconBadge,
   inputClass,
+  Meter,
   MonthPicker,
   PageHeader,
   cx,
@@ -20,10 +26,31 @@ import {
   type Transaction,
   type TransactionPage,
 } from "@/lib/api";
-import { currentMonth, money, shortDate } from "@/lib/format";
+import { currentMonth, money, monthLabel, percent } from "@/lib/format";
+import { usePageEnter } from "@/lib/motion";
+import { notify } from "@/lib/signals";
 
 const PAGE_SIZE = 50;
 const KIND_LABEL = { EXPENSE: "Despesas", INCOME: "Receitas", TRANSFER: "Movimentações" };
+
+/** "2026-10-15" -> "Hoje", "Ontem" ou "qua., 15 de out." */
+function dayLabel(iso: string) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  const today = new Date();
+  const diff = Math.round(
+    (new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime() - date.getTime()) /
+      86_400_000,
+  );
+  if (diff === 0) return "Hoje";
+  if (diff === 1) return "Ontem";
+  return date.toLocaleDateString("pt-BR", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: y === today.getFullYear() ? undefined : "numeric",
+  });
+}
 
 export default function TransacoesPage() {
   const [month, setMonth] = useState(currentMonth);
@@ -36,6 +63,18 @@ export default function TransacoesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [editing, setEditing] = useState<{ tx: Transaction; categoryId: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [breakdown, setBreakdown] = useState<CategoryRow[]>([]);
+  const root = useRef<HTMLDivElement>(null);
+
+  usePageEnter(root, data !== null);
+
+  // Cards de categoria: gasto de cada uma no mês escolhido
+  useEffect(() => {
+    if (!month) return;
+    api<CategoryRow[]>(`/dashboard/categories${qs({ month })}`)
+      .then((rows) => setBreakdown(rows.filter((r) => r.spent > 0)))
+      .catch((e) => setError(e.message));
+  }, [month]);
 
   useEffect(() => {
     Promise.all([api<Account[]>("/accounts"), api<Category[]>("/categories")])
@@ -71,128 +110,211 @@ export default function TransacoesPage() {
     fn();
     setPage(1);
   };
+  const byId = new Map(categories.map((c) => [c.id, c]));
+
+  // Agrupa por dia, mantendo a ordem da API (mais recentes primeiro)
+  const days: { date: string; items: Transaction[] }[] = [];
+  for (const t of data?.items ?? []) {
+    const last = days[days.length - 1];
+    if (last?.date === t.date) last.items.push(t);
+    else days.push({ date: t.date, items: [t] });
+  }
 
   return (
-    <>
+    <div ref={root}>
       <PageHeader
         title="Transações"
+        description="Troque a categoria direto na lista. Você pode aplicar a mudança às transações parecidas."
         actions={
           month ? (
             <>
               <MonthPicker value={month} onChange={(m) => filter(() => setMonth(m))} />
               <Button variant="ghost" onClick={() => filter(() => setMonth(""))}>
+                <CalendarRange />
                 Todos os meses
               </Button>
             </>
           ) : (
-            <Button onClick={() => filter(() => setMonth(currentMonth()))}>Filtrar por mês</Button>
+            <Button onClick={() => filter(() => setMonth(currentMonth()))}>
+              <CalendarRange />
+              Filtrar por mês
+            </Button>
           )
         }
       />
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        <input
-          className={cx(inputClass, "min-w-56 flex-1")}
-          placeholder="Buscar descrição ou estabelecimento"
-          value={q}
-          onChange={(e) => filter(() => setQ(e.target.value))}
-        />
-        <select
-          className={inputClass}
-          value={accountId}
-          onChange={(e) => filter(() => setAccountId(e.target.value))}
-        >
-          <option value="">Todas as contas</option>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-        <select
-          className={inputClass}
-          value={categoryId}
-          onChange={(e) => filter(() => setCategoryId(e.target.value))}
-        >
-          <option value="">Todas as categorias</option>
-          <CategoryOptions categories={categories} />
-        </select>
-      </div>
-
-      {error && <ErrorNote>{error}</ErrorNote>}
-
-      {data && (
-        <div className="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
-          <span className="text-muted">{data.total} transações</span>
-          <span>
-            Entradas <strong className="tabular text-positive">{money(data.income)}</strong>
-          </span>
-          <span>
-            Saídas <strong className="tabular text-negative">{money(data.expense)}</strong>
-          </span>
-          <span className="text-xs text-muted">(sem transferências entre contas e faturas)</span>
-        </div>
-      )}
-
-      <Card className="p-0">
-        {data && data.items.length === 0 ? (
-          <Empty>Nenhuma transação encontrada.</Empty>
-        ) : (
-          <ul className="divide-y divide-border">
-            {data?.items.map((t) => (
-              <li key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
-                <span className="w-12 shrink-0 text-xs text-muted tabular">
-                  {shortDate(t.date)}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm">{t.merchant ?? t.description}</p>
-                  <p className="truncate text-xs text-muted">
-                    {t.account_name}
-                    {t.merchant && ` · ${t.description}`}
-                    {t.installment_total && ` · parcela ${t.installment_number}/${t.installment_total}`}
-                    {t.status === "PENDING" && " · pendente"}
-                  </p>
-                </div>
-                <select
-                  className={cx(inputClass, "max-w-48 py-1 text-xs")}
-                  value={t.category_id ?? ""}
-                  onChange={(e) => setEditing({ tx: t, categoryId: Number(e.target.value) })}
-                  aria-label="Categoria"
-                >
-                  {!t.category_id && <option value="">Sem categoria</option>}
-                  <CategoryOptions categories={categories} />
-                </select>
-                <span
-                  className={cx(
-                    "w-28 shrink-0 text-right text-sm tabular",
-                    t.category_kind === "TRANSFER"
-                      ? "text-muted"
-                      : Number(t.amount) < 0
-                        ? "text-negative"
-                        : "text-positive",
-                  )}
-                >
-                  {money(t.amount)}
-                </span>
-              </li>
+      <div className="grid gap-4">
+        <Card data-enter className="flex flex-wrap gap-2 p-3 sm:p-3">
+          <label className="relative min-w-56 flex-1">
+            <span className="sr-only">Buscar</span>
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" aria-hidden />
+            <input
+              className={cx(inputClass, "w-full pl-9")}
+              placeholder="Buscar descrição ou estabelecimento"
+              value={q}
+              onChange={(e) => filter(() => setQ(e.target.value))}
+            />
+          </label>
+          <select
+            aria-label="Conta"
+            className={cx(inputClass, "min-w-40 flex-1 sm:flex-none")}
+            value={accountId}
+            onChange={(e) => filter(() => setAccountId(e.target.value))}
+          >
+            <option value="">Todas as contas</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
             ))}
-          </ul>
-        )}
-      </Card>
+          </select>
+          {/* Sem mês escolhido não há gasto por categoria para os cards: fica o seletor */}
+          {!month && (
+            <select
+              aria-label="Categoria"
+              className={cx(inputClass, "min-w-40 flex-1 sm:flex-none")}
+              value={categoryId}
+              onChange={(e) => filter(() => setCategoryId(e.target.value))}
+            >
+              <option value="">Todas as categorias</option>
+              <CategoryOptions categories={categories} />
+            </select>
+          )}
+        </Card>
 
-      {pages > 1 && (
-        <div className="mt-4 flex items-center justify-center gap-3 text-sm">
-          <Button disabled={page <= 1} onClick={() => setPage(page - 1)}>
-            Anterior
-          </Button>
-          <span className="text-muted">
-            {page} de {pages}
-          </span>
-          <Button disabled={page >= pages} onClick={() => setPage(page + 1)}>
-            Próxima
-          </Button>
-        </div>
-      )}
+        {month && breakdown.length > 0 && (
+          <CategoryCards
+            month={month}
+            rows={breakdown}
+            byId={byId}
+            selected={categoryId}
+            onSelect={(id) => filter(() => setCategoryId(id === categoryId ? "" : id))}
+          />
+        )}
+
+        {error && <ErrorNote>{error}</ErrorNote>}
+
+        {data && (
+          <div data-enter className="grid gap-3 sm:grid-cols-3">
+            <Summary icon={List} color="var(--cat-home)" label="Transações" value={String(data.total)} />
+            <Summary
+              icon={ArrowUpRight}
+              color="var(--positive)"
+              label="Entradas"
+              value={money(data.income)}
+              valueClass="text-positive"
+            />
+            <Summary
+              icon={ArrowDownRight}
+              color="var(--negative)"
+              label="Saídas"
+              value={money(data.expense)}
+              valueClass="text-negative"
+            />
+            <p className="text-xs text-muted sm:col-span-3">
+              Entradas e saídas não contam transferências entre suas contas nem pagamento de fatura.
+            </p>
+          </div>
+        )}
+
+        {data && (
+          <Card data-enter className="p-0 sm:p-0">
+            {data.items.length === 0 ? (
+              <Empty icon={Search} color="var(--cat-home)">
+                Nenhuma transação encontrada com esses filtros.
+              </Empty>
+            ) : (
+              days.map((day) => {
+                const total = day.items
+                  .filter((t) => t.category_kind !== "TRANSFER")
+                  .reduce((sum, t) => sum + Number(t.amount), 0);
+                return (
+                  <section key={day.date} aria-label={dayLabel(day.date)}>
+                    <header className="flex items-center justify-between gap-3 border-b border-border bg-surface-2/50 px-4 py-2 first:rounded-t-card sm:px-5">
+                      <h2 className="text-xs font-semibold text-muted first-letter:uppercase">
+                        {dayLabel(day.date)}
+                      </h2>
+                      <span
+                        className={cx(
+                          "text-xs font-semibold tabular",
+                          total < 0 ? "text-negative" : total > 0 ? "text-positive" : "text-muted",
+                        )}
+                      >
+                        {total > 0 ? "+" : ""}
+                        {money(total)}
+                      </span>
+                    </header>
+                    <ul className="divide-y divide-border">
+                      {day.items.map((t) => {
+                        const cat = t.category_id ? byId.get(t.category_id) : undefined;
+                        const details = [
+                          t.account_name,
+                          t.installment_total && `parcela ${t.installment_number}/${t.installment_total}`,
+                          t.status === "PENDING" && "pendente",
+                        ].filter(Boolean);
+                        return (
+                          <li
+                            key={t.id}
+                            className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3 sm:grid-cols-[auto_minmax(0,1fr)_12rem_8rem] sm:px-5"
+                          >
+                            <CategoryIcon categoryKey={cat?.key} kind={t.category_kind} />
+                            <div className="min-w-0">
+                              <p className="truncate font-medium">{t.merchant ?? t.description}</p>
+                              <p className="truncate text-xs text-muted">
+                                {details.join(", ")}
+                                {t.merchant && <span className="hidden sm:inline">, {t.description}</span>}
+                              </p>
+                            </div>
+                            <span
+                              className={cx(
+                                "text-right font-semibold whitespace-nowrap tabular sm:order-last",
+                                t.category_kind === "TRANSFER"
+                                  ? "text-muted"
+                                  : Number(t.amount) < 0
+                                    ? "text-foreground"
+                                    : "text-positive",
+                              )}
+                            >
+                              {Number(t.amount) > 0 && t.category_kind !== "TRANSFER" ? "+" : ""}
+                              {money(t.amount)}
+                            </span>
+                            <select
+                              className={cx(
+                                inputClass,
+                                "col-span-2 col-start-2 min-h-9 w-full text-xs sm:col-span-1 sm:col-start-auto",
+                              )}
+                              value={t.category_id ?? ""}
+                              onChange={(e) => setEditing({ tx: t, categoryId: Number(e.target.value) })}
+                              aria-label={`Categoria de ${t.merchant ?? t.description}`}
+                            >
+                              {!t.category_id && <option value="">Sem categoria</option>}
+                              <CategoryOptions categories={categories} />
+                            </select>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                );
+              })
+            )}
+          </Card>
+        )}
+
+        {pages > 1 && (
+          <div className="flex items-center justify-center gap-3 text-sm">
+            <Button disabled={page <= 1} onClick={() => setPage(page - 1)}>
+              Anterior
+            </Button>
+            <span className="text-muted tabular">
+              {page} de {pages}
+            </span>
+            <Button disabled={page >= pages} onClick={() => setPage(page + 1)}>
+              Próxima
+            </Button>
+          </div>
+        )}
+      </div>
 
       {editing && (
         <RecategorizeDialog
@@ -201,11 +323,89 @@ export default function TransacoesPage() {
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
+            notify("Categoria atualizada.");
             load();
           }}
         />
       )}
-    </>
+    </div>
+  );
+}
+
+/** Categorias do mês como cards: clicar filtra a lista, clicar de novo limpa. */
+function CategoryCards({
+  month,
+  rows,
+  byId,
+  selected,
+  onSelect,
+}: {
+  month: string;
+  rows: CategoryRow[];
+  byId: Map<number, Category>;
+  selected: string;
+  onSelect: (id: string) => void;
+}) {
+  const total = rows.reduce((sum, r) => sum + r.spent, 0);
+  const card = (active: boolean) =>
+    cx(
+      "grid w-40 shrink-0 snap-start content-start gap-2 rounded-card border bg-surface p-3.5 text-left",
+      "transition-[border-color,background-color] duration-[var(--dur-fast)] ease-[var(--ease-out)] hover:bg-surface-2",
+      active ? "border-accent outline-2 outline-offset-0 outline-accent" : "border-card-edge",
+    );
+  return (
+    <section data-enter aria-label={`Gastos por categoria em ${monthLabel(month)}`} className="grid gap-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-[15px] font-semibold">Categorias de {monthLabel(month).split(" de ")[0].toLowerCase()}</h2>
+        <span className="text-xs text-muted">clique para filtrar</span>
+      </div>
+      <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pt-1 pb-2">
+        <button type="button" className={card(selected === "")} aria-pressed={selected === ""} onClick={() => onSelect("")}>
+          <IconBadge icon={List} color="var(--accent)" />
+          <span className="text-sm font-semibold">Todas</span>
+          <span className="text-lg font-light tabular">{money(total)}</span>
+          <span className="text-xs text-muted">{rows.length} categorias</span>
+        </button>
+        {rows.map((r) => {
+          const cat = r.category_id ? byId.get(r.category_id) : undefined;
+          const id = r.category_id ? String(r.category_id) : "";
+          if (!id) return null;
+          const active = selected === id;
+          const share = total ? r.spent / total : 0;
+          return (
+            <button key={id} type="button" className={card(active)} aria-pressed={active} onClick={() => onSelect(id)}>
+              <CategoryIcon categoryKey={cat?.key} kind={cat?.kind ?? "EXPENSE"} />
+              <span className="truncate text-sm font-semibold">{r.category_name}</span>
+              <span className="text-lg font-light tabular">{money(r.spent)}</span>
+              <Meter thin value={share} color={categoryStyle(cat?.key, cat?.kind ?? "EXPENSE").color} />
+              <span className="text-xs text-muted tabular">{percent(share)} do mês</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function Summary({
+  icon,
+  color,
+  label,
+  value,
+  valueClass,
+}: {
+  icon: typeof List;
+  color: string;
+  label: string;
+  value: string;
+  valueClass?: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-card border border-card-edge bg-surface px-4 py-3">
+      <IconBadge icon={icon} color={color} size="sm" />
+      <span className="text-sm text-muted">{label}</span>
+      <span className={cx("ml-auto text-[17px] font-medium tabular", valueClass)}>{value}</span>
+    </div>
   );
 }
 
@@ -243,7 +443,7 @@ function RecategorizeDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function save() {
+  async function save(close: (after?: () => void) => void) {
     setSaving(true);
     try {
       await api(`/transactions/${tx.id}`, {
@@ -254,7 +454,7 @@ function RecategorizeDialog({
           rule_pattern: createRule ? pattern : null,
         }),
       });
-      onSaved();
+      close(onSaved);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setSaving(false);
@@ -262,52 +462,57 @@ function RecategorizeDialog({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 px-4"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="w-full max-w-md rounded-xl border border-border bg-surface p-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="mb-1 font-medium">Mudar categoria</h2>
-        <p className="mb-4 text-sm text-muted">
-          <strong className="text-foreground">{tx.merchant ?? tx.description}</strong> →{" "}
-          {category.name}
-        </p>
-        <label className="mb-2 flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={createRule}
-            onChange={(e) => setCreateRule(e.target.checked)}
-          />
-          Aplicar também às transações parecidas (atuais e futuras)
-        </label>
-        {createRule && (
-          <div className="mb-4">
-            <input
-              className={cx(inputClass, "w-full")}
-              value={pattern}
-              onChange={(e) => setPattern(e.target.value)}
-            />
-            <p className="mt-1 text-xs text-muted">
-              Toda transação cuja descrição contenha este texto vai para {category.name}.
+    <Dialog title="Mudar categoria" onClose={onClose}>
+      {(close) => (
+        <div className="grid gap-4">
+          <div className="flex items-center gap-3 rounded-control bg-surface-2 p-3">
+            <CategoryIcon categoryKey={category.key} kind={category.kind} />
+            <p className="min-w-0 text-sm">
+              <strong className="block truncate font-semibold">{tx.merchant ?? tx.description}</strong>
+              <span className="text-muted">vai para {category.name}</span>
             </p>
           </div>
-        )}
-        {error && <ErrorNote>{error}</ErrorNote>}
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button variant="primary" onClick={save} disabled={saving || (createRule && !pattern.trim())}>
-            Salvar
-          </Button>
+          <label className="flex items-start gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 accent-[var(--accent)]"
+              checked={createRule}
+              onChange={(e) => setCreateRule(e.target.checked)}
+            />
+            Aplicar também às transações parecidas, atuais e futuras
+          </label>
+          {createRule && (
+            <div className="grid gap-1.5">
+              <label htmlFor="rule-pattern" className="label">
+                Texto que identifica as parecidas
+              </label>
+              <input
+                id="rule-pattern"
+                className={cx(inputClass, "w-full")}
+                value={pattern}
+                onChange={(e) => setPattern(e.target.value)}
+              />
+              <p className="text-xs text-muted">
+                Toda transação cuja descrição contenha este texto vai para {category.name}.
+              </p>
+            </div>
+          )}
+          {error && <ErrorNote>{error}</ErrorNote>}
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => close()}>
+              Cancelar
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => save(close)}
+              disabled={saving || (createRule && !pattern.trim())}
+            >
+              {saving ? "Salvando…" : "Salvar"}
+            </Button>
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </Dialog>
   );
 }
 

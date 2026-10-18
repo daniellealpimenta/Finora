@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, connections, dashboard, imports, pluggy, transactions
+from app.api.routes import auth, connections, dashboard, imports, pluggy, savings, transactions
 from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.services.categories import ensure_categories
@@ -53,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(transactions.router)
     app.include_router(imports.router)
     app.include_router(dashboard.router)
+    app.include_router(savings.router)
     return app
 
 

@@ -62,6 +62,12 @@ def commitments(_: CurrentUser, db: DbSession) -> list[dict]:
     return analytics.future_commitments(db, date.today())
 
 
+@router.get("/dashboard/installments")
+def installments(_: CurrentUser, db: DbSession) -> list[dict]:
+    """Compras parceladas em andamento: pagas, faltam, valor que falta."""
+    return analytics.installments(db)
+
+
 # --- orçamentos ---------------------------------------------------------------------
 
 

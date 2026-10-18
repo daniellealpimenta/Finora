@@ -64,6 +64,9 @@ class Connection(TimestampMixin, Base):
     accounts: Mapped[list["Account"]] = relationship(
         back_populates="connection", cascade="all, delete-orphan"
     )
+    investments: Mapped[list["Investment"]] = relationship(
+        back_populates="connection", cascade="all, delete-orphan"
+    )
 
 
 class AccountType(enum.StrEnum):
@@ -86,11 +89,61 @@ class Account(TimestampMixin, Base):
     currency: Mapped[str] = mapped_column(String(3), default="BRL")
     balance: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
     credit_limit: Mapped[Decimal | None] = mapped_column(Money)
+    # Cartão: vencimento e fechamento da fatura atual (creditData da Pluggy)
+    bill_due_date: Mapped[date | None] = mapped_column(Date)
+    bill_close_date: Mapped[date | None] = mapped_column(Date)
 
     connection: Mapped[Connection | None] = relationship(back_populates="accounts")
     transactions: Mapped[list["Transaction"]] = relationship(
         back_populates="account", cascade="all, delete-orphan"
     )
+
+
+class Investment(TimestampMixin, Base):
+    """Dinheiro guardado: caixinhas, cofrinhos, CDBs, fundos (GET /investments da Pluggy)."""
+
+    __tablename__ = "investments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    connection_id: Mapped[int] = mapped_column(ForeignKey("connections.id"), index=True)
+    external_id: Mapped[str] = mapped_column(String(128), unique=True)
+    name: Mapped[str] = mapped_column(String(255))
+    type: Mapped[str] = mapped_column(String(32))  # FIXED_INCOME, MUTUAL_FUND, ...
+    subtype: Mapped[str | None] = mapped_column(String(64))  # CDB, LCI, ...
+    balance: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
+    currency: Mapped[str] = mapped_column(String(3), default="BRL")
+    status: Mapped[str | None] = mapped_column(String(32))
+    # Meta definida pelo usuário aqui (a Pluggy não tem esse dado); o sync nunca mexe nela
+    goal_amount: Mapped[Decimal | None] = mapped_column(Money)
+    # Detalhes da aplicação: é por eles que o usuário reconhece cada depósito
+    rate: Mapped[Decimal | None] = mapped_column(Numeric(9, 4))  # 110 = 110% do CDI
+    rate_type: Mapped[str | None] = mapped_column(String(16))  # CDI, SELIC, IPCA, PRE...
+    amount_original: Mapped[Decimal | None] = mapped_column(Money)
+    purchase_date: Mapped[date | None] = mapped_column(Date)
+    due_date: Mapped[date | None] = mapped_column(Date)
+    # Cofrinho a que o usuário ligou esta aplicação (o Open Finance não traz o nome dele)
+    pot_id: Mapped[int | None] = mapped_column(
+        ForeignKey("savings_pots.id", ondelete="SET NULL"), index=True
+    )
+
+    connection: Mapped[Connection] = relationship(back_populates="investments")
+    pot: Mapped["SavingsPot | None"] = relationship(back_populates="investments")
+
+
+class SavingsPot(TimestampMixin, Base):
+    """Cofrinho montado pelo usuário: junta aplicações (cada depósito no PicPay, por
+    exemplo, vira um CDB separado na Pluggy, todos com o mesmo nome)."""
+
+    __tablename__ = "savings_pots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    goal_amount: Mapped[Decimal | None] = mapped_column(Money)
+    # Chave de agrupamento automático (instituição + produto + taxa) do cofrinho sugerido;
+    # aplicações novas com a mesma chave entram nele sozinhas
+    auto_key: Mapped[str | None] = mapped_column(String(160), unique=True)
+
+    investments: Mapped[list[Investment]] = relationship(back_populates="pot")
 
 
 class CategoryKind(enum.StrEnum):

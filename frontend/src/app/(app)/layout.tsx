@@ -1,17 +1,21 @@
 "use client";
 
+import { Landmark, LayoutDashboard, List, LogOut, PiggyBank, Target, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { cx } from "@/components/ui";
+import { ThemeToggle, Toaster, VaultMark } from "@/components/chrome";
+import { IconButton, cx, tone } from "@/components/ui";
 import { api, setToken, type Me } from "@/lib/api";
 
-const NAV = [
-  { href: "/", label: "Visão geral" },
-  { href: "/transacoes", label: "Transações" },
-  { href: "/orcamentos", label: "Orçamentos" },
-  { href: "/contas", label: "Contas" },
+// Cada seção tem a sua cor de detalhe no ícone (MASTER.md, "Seções do menu")
+const NAV: { href: string; label: string; icon: LucideIcon; color: string }[] = [
+  { href: "/", label: "Visão geral", icon: LayoutDashboard, color: "var(--accent)" },
+  { href: "/transacoes", label: "Transações", icon: List, color: "var(--cat-home)" },
+  { href: "/orcamentos", label: "Orçamentos", icon: Target, color: "var(--cat-move)" },
+  { href: "/cofrinhos", label: "Cofrinhos", icon: PiggyBank, color: "var(--cat-care)" },
+  { href: "/contas", label: "Contas", icon: Landmark, color: "var(--cat-fun)" },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -27,39 +31,90 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (!me) return null;
 
+  function logout() {
+    setToken(null);
+    router.replace("/login");
+  }
+
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-10 border-b border-border bg-background/90 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center gap-4 overflow-x-auto px-4 py-3">
-          <span className="shrink-0 font-semibold">ManagerFinance</span>
-          <nav className="flex shrink-0 gap-1">
+      <header className="sticky top-0 z-30 border-b border-border bg-surface">
+        <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-2.5 sm:px-6">
+          <Link href="/" className="mr-4 flex shrink-0 items-center gap-2.5 rounded-control font-bold">
+            <VaultMark />
+            ManagerFinance
+          </Link>
+          <nav className="hidden gap-1 sm:flex" aria-label="Seções">
             {NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cx(
-                  "rounded-md px-2.5 py-1 text-sm",
-                  pathname === item.href
-                    ? "bg-surface-2 font-medium"
-                    : "text-muted hover:text-foreground",
-                )}
-              >
-                {item.label}
-              </Link>
+              <NavLink key={item.href} item={item} active={pathname === item.href} />
             ))}
           </nav>
-          <button
-            className="ml-auto shrink-0 text-sm text-muted hover:text-foreground"
-            onClick={() => {
-              setToken(null);
-              router.replace("/login");
-            }}
-          >
-            Sair
-          </button>
+          <div className="ml-auto flex items-center gap-1">
+            <ThemeToggle />
+            <IconButton label="Sair" onClick={logout}>
+              <LogOut />
+            </IconButton>
+          </div>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+
+      <main className="mx-auto max-w-6xl px-4 pt-6 pb-28 sm:px-6 sm:pt-8 sm:pb-12">{children}</main>
+
+      {/* Celular: as seções viram uma barra inferior fixa */}
+      <nav
+        aria-label="Seções"
+        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-surface px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom,0px))] sm:hidden"
+      >
+        {NAV.map((item) => {
+          const active = pathname === item.href;
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              style={tone(item.color)}
+              aria-current={active ? "page" : undefined}
+              className={cx(
+                "grid min-h-11 justify-items-center gap-0.5 rounded-control py-1 text-[11px] font-semibold",
+                active ? "text-foreground" : "text-muted",
+              )}
+            >
+              <span
+                className={cx(
+                  "grid h-7 w-11 place-items-center rounded-full text-[var(--c)] transition-colors duration-[var(--dur-base)] ease-[var(--ease-out)]",
+                  active && "tint",
+                )}
+              >
+                <Icon className="size-[18px]" strokeWidth={2.2} />
+              </span>
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
+
+      <Toaster />
     </div>
+  );
+}
+
+function NavLink({ item, active }: { item: (typeof NAV)[number]; active: boolean }) {
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.href}
+      style={tone(item.color)}
+      aria-current={active ? "page" : undefined}
+      className={cx(
+        "inline-flex min-h-9 items-center gap-2 rounded-control px-3 text-sm font-medium",
+        "transition-colors duration-[var(--dur-base)] ease-[var(--ease-out)]",
+        active
+          ? "bg-[color-mix(in_oklab,var(--c)_13%,transparent)] text-foreground"
+          : "text-muted hover:bg-surface-2 hover:text-foreground",
+      )}
+    >
+      <Icon className="size-4 text-[var(--c)]" strokeWidth={2.2} />
+      {item.label}
+    </Link>
   );
 }
