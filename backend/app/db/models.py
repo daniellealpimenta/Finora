@@ -156,6 +156,28 @@ class Investment(TimestampMixin, Base):
 
     connection: Mapped[Connection] = relationship(back_populates="investments")
     pot: Mapped["SavingsPot | None"] = relationship(back_populates="investments")
+    snapshots: Mapped[list["InvestmentSnapshot"]] = relationship(
+        back_populates="investment", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class InvestmentSnapshot(Base):
+    """Saldo da aplicação num dia, gravado a cada sync: a Pluggy só manda o saldo de hoje, e
+    é a diferença entre dias que mostra quanto rendeu em cada um."""
+
+    __tablename__ = "investment_snapshots"
+    __table_args__ = (UniqueConstraint("investment_id", "day"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    investment_id: Mapped[int] = mapped_column(
+        ForeignKey("investments.id", ondelete="CASCADE"), index=True
+    )
+    day: Mapped[date] = mapped_column(Date)
+    balance: Mapped[Decimal] = mapped_column(Money)
+    # Aplicado naquele dia: separa rendimento de depósito novo
+    amount_original: Mapped[Decimal | None] = mapped_column(Money)
+
+    investment: Mapped[Investment] = relationship(back_populates="snapshots")
 
 
 class SavingsPot(TimestampMixin, Base):
@@ -270,3 +292,66 @@ class AppSetting(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[dict] = mapped_column(JSON)
+
+
+class WishStatus(enum.StrEnum):
+    WANTED = "WANTED"
+    BOUGHT = "BOUGHT"
+    DROPPED = "DROPPED"  # desisti
+
+
+class WishGroup(TimestampMixin, Base):
+    """Grupo da lista de desejos (ex.: "Casa nova"), com total próprio. Pode ser ligado a um
+    cofrinho para acompanhar quanto já foi guardado para ele."""
+
+    __tablename__ = "wish_groups"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    pot_id: Mapped[int | None] = mapped_column(ForeignKey("savings_pots.id", ondelete="SET NULL"))
+
+    pot: Mapped[SavingsPot | None] = relationship()
+    items: Mapped[list["WishItem"]] = relationship(back_populates="group")
+
+
+class WishItem(TimestampMixin, Base):
+    __tablename__ = "wish_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("wish_groups.id", ondelete="SET NULL"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    url: Mapped[str | None] = mapped_column(String(2048))
+    price: Mapped[Decimal] = mapped_column(Money)
+    store: Mapped[str | None] = mapped_column(String(100))
+    image_url: Mapped[str | None] = mapped_column(String(2048))
+    notes: Mapped[str | None] = mapped_column(String(1000))
+    priority: Mapped[int] = mapped_column(Integer, default=2)  # 1 alta, 2 média, 3 baixa
+    status: Mapped[WishStatus] = mapped_column(
+        Enum(WishStatus, native_enum=False, length=16), default=WishStatus.WANTED
+    )
+    # Avisa quando o preço chega nele ou abaixo
+    target_price: Mapped[Decimal | None] = mapped_column(Money)
+    bought_at: Mapped[date | None] = mapped_column(Date)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    group: Mapped[WishGroup | None] = relationship(back_populates="items")
+    prices: Mapped[list["WishPrice"]] = relationship(
+        back_populates="item", cascade="all, delete-orphan", order_by="WishPrice.checked_at"
+    )
+
+
+class WishPrice(Base):
+    """Histórico de preço de um desejo: um registro por mudança de preço."""
+
+    __tablename__ = "wish_prices"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int] = mapped_column(
+        ForeignKey("wish_items.id", ondelete="CASCADE"), index=True
+    )
+    price: Mapped[Decimal] = mapped_column(Money)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    item: Mapped[WishItem] = relationship(back_populates="prices")

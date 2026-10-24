@@ -2,12 +2,14 @@
 
 import { useRef } from "react";
 import {
+  Area,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Line,
-  LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -201,21 +203,39 @@ export type DailyPoint = {
   previous: number | null;
 };
 
-export function DailyChart({ data }: { data: DailyPoint[] }) {
+/** Teto "redondo" (1, 2, 2,5 ou 5 × 10ⁿ) acima do maior valor, dividido em 4 faixas iguais. */
+function niceMax(max: number) {
+  if (max <= 0) return 100;
+  const step = max / 4;
+  const pow = 10 ** Math.floor(Math.log10(step));
+  const nice = [1, 2, 2.5, 5, 10].find((m) => m * pow >= step)! * pow;
+  return nice * 4;
+}
+const niceTicks = (max: number) => [0, 1, 2, 3, 4].map((i) => (niceMax(max) / 4) * i);
+
+/**
+ * Gasto acumulado por dia do ciclo: este ciclo em área (até hoje), o anterior em linha
+ * tracejada no mesmo dia do ciclo, e uma marca em "hoje". O eixo X é o dia do ciclo, então os
+ * dois ciclos se comparam ponto a ponto.
+ */
+export function DailyChart({ data, today }: { data: DailyPoint[]; today?: number }) {
+  const max = Math.max(0, ...data.flatMap((d) => [d.current ?? 0, d.previous ?? 0]));
   return (
-    <div className="h-64">
+    <div className="h-56">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ left: 4, right: 12, top: 4 }}>
+        <ComposedChart data={data} margin={{ left: 4, right: 12, top: 8 }}>
           <CartesianGrid vertical={false} stroke={GRID} />
           <XAxis
-            dataKey="label"
+            dataKey="day"
             tick={AXIS_TICK}
             axisLine={{ stroke: GRID }}
             tickLine={false}
-            interval="preserveStartEnd"
-            minTickGap={16}
+            ticks={data.filter((d) => d.day === 1 || d.day % 5 === 0).map((d) => d.day)}
+            tickFormatter={(day) => `dia ${day}`}
           />
           <YAxis
+            domain={[0, niceMax(max)]}
+            ticks={niceTicks(max)}
             tickFormatter={moneyCompact}
             tick={AXIS_TICK}
             axisLine={false}
@@ -224,30 +244,49 @@ export function DailyChart({ data }: { data: DailyPoint[] }) {
           />
           <Tooltip
             cursor={{ stroke: "var(--muted)", strokeWidth: 1 }}
-            content={({ active, payload, label }) => (
-              <ChartTooltip
-                active={active}
-                payload={payload as TooltipEntry[]}
-                title={`Até ${label}`}
-                series={DAILY_SERIES}
-              />
-            )}
+            content={({ active, payload, label }) => {
+              const point = data.find((d) => d.day === label);
+              return (
+                <ChartTooltip
+                  active={active}
+                  payload={payload as TooltipEntry[]}
+                  title={`Dia ${label} do ciclo${point?.label ? ` (${point.label})` : ""}`}
+                  series={DAILY_SERIES}
+                />
+              );
+            }}
           />
-          {DAILY_SERIES.map((s) => (
-            <Line
-              key={s.key}
-              dataKey={s.key}
-              name={s.label}
-              stroke={s.color}
-              strokeWidth={s.dashed ? 1.75 : 2.5}
-              strokeDasharray={s.dashed ? "5 4" : undefined}
-              dot={false}
-              activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2 }}
-              connectNulls={false}
-              isAnimationActive={false}
+          {today !== undefined && (
+            <ReferenceLine
+              x={today}
+              stroke="var(--muted)"
+              strokeDasharray="2 3"
+              label={{ value: "hoje", position: "insideTopRight", fill: "var(--muted)", fontSize: 11 }}
             />
-          ))}
-        </LineChart>
+          )}
+          <Line
+            dataKey="previous"
+            name="Ciclo anterior"
+            stroke="var(--series-ref)"
+            strokeWidth={1.75}
+            strokeDasharray="5 4"
+            dot={false}
+            activeDot={{ r: 3.5, stroke: "var(--surface)", strokeWidth: 2 }}
+            isAnimationActive={false}
+          />
+          <Area
+            dataKey="current"
+            name="Este ciclo"
+            stroke="var(--accent)"
+            strokeWidth={2.5}
+            fill="var(--accent)"
+            fillOpacity={0.12}
+            dot={false}
+            activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2 }}
+            connectNulls={false}
+            isAnimationActive={false}
+          />
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   );

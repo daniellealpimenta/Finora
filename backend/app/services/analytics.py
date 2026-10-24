@@ -41,6 +41,7 @@ from app.services.cycles import ONE_DAY, Cycles, shift_key
 from app.services.periods import add_months, month_key
 
 ZERO = Decimal("0")
+_CENTS = Decimal("0.01")
 LIQUID_ACCOUNTS = (AccountType.CHECKING, AccountType.SAVINGS)
 # Compras de cartão podem ser de antes do ciclo em que a fatura delas fecha
 _CARD_LOOKBACK = timedelta(days=100)
@@ -136,6 +137,8 @@ def cycle_info(cyc: Cycles, key: str, today: date) -> dict:
         "is_current": start <= today < end,
         "current_key": cyc.key_of(today),
         "reference_card": cyc.reference.name if cyc.reference else None,
+        # Dia de início escolhido pelo usuário (None: segue o fechamento do cartão)
+        "start_day": cyc.start_day,
     }
 
 
@@ -166,6 +169,16 @@ def _average(db: Session, cyc: Cycles, key: str, field: str, cycles: int = 3) ->
     flows = cashflow(db, shift_key(key, -1), cycles, cyc)
     with_data = [f[field] for f in flows if f[field] > 0]
     return sum(with_data, ZERO) / len(with_data) if with_data else ZERO
+
+
+def _savings_rate_closed(db: Session, cyc: Cycles, key: str, today: date) -> float | None:
+    """Taxa de poupança dos 3 últimos ciclos fechados até `key`, somados. O ciclo em andamento
+    oscila demais (antes do salário fica negativa, logo depois dele, altíssima)."""
+    last_closed = key if cyc.bounds(key)[1] <= today else shift_key(key, -1)
+    flows = cashflow(db, last_closed, 3, cyc)
+    income = sum((f["income"] for f in flows), ZERO)
+    expense = sum((f["expense"] for f in flows), ZERO)
+    return _ratio(income - expense, income)
 
 
 # --- recorrentes (assinaturas e contas fixas) -------------------------------------
@@ -221,6 +234,34 @@ def recurring(db: Session, today: date, lookback: int = 6, cyc: Cycles | None = 
             }
         )
     return sorted(found, key=lambda x: x["monthly_amount"], reverse=True)
+
+
+def typical_daily_variable(
+    cyc: Cycles,
+    key: str,
+    history: list[Row],
+    fixed_labels: set[str],
+    skip_categories: frozenset[str] = frozenset(),
+) -> Decimal:
+    """Gasto variável médio por dia nos 3 ciclos anteriores a `key`: sem parcelas, contas fixas
+    (`fixed_labels`, rótulos normalizados) e categorias em `skip_categories`. Divide só pelos
+    dias dos ciclos que têm lançamentos, para quem começou a usar há pouco."""
+    last3 = {shift_key(key, -i) for i in (1, 2, 3)}
+    with_data = {r.cycle for r in history if r.cycle in last3}
+    days = sum(((cyc.bounds(k)[1] - cyc.bounds(k)[0]).days for k in with_data), 0)
+    spent = -sum(
+        (
+            r.amount
+            for r in history
+            if r.cycle in with_data
+            and r.kind == CategoryKind.EXPENSE
+            and not r.installment
+            and r.category_key not in skip_categories
+            and _normalize(r.label) not in fixed_labels
+        ),
+        ZERO,
+    )
+    return (spent / days).quantize(_CENTS) if days else ZERO
 
 
 # --- a conta do ciclo ---------------------------------------------------------------
@@ -338,13 +379,92 @@ def cycle_flow(
     }
 
 
+# Lançamentos menores que isso não distorcem o resultado o bastante para um aviso
+_SHIFT_MIN = Decimal("100")
+
+
+def _similar(a: Decimal, b: Decimal) -> bool:
+    return abs(a - b) <= max(a, b) * Decimal("0.25")
+
+
+def cycle_notes(db: Session, cyc: Cycles, key: str, today: date, flow: dict) -> list[dict]:
+    """Avisos que ajudam a ler o resultado do ciclo.
+
+    - `shifted_out`: algo que cai todo ciclo (mesmo rótulo, valor parecido) não caiu neste e
+      caiu duas vezes no seguinte. O resultado parece melhor (ou pior, se for receita).
+    - `doubled`: o contrário, caiu duas vezes neste e nenhuma no anterior.
+    - `bills_after`: faturas do ciclo que vencem já no ciclo seguinte. Elas estão descontadas
+      aqui, mesmo pagas depois.
+    - `withdrew`: resgatou dos cofrinhos mais do que guardou; o resgate conta como entrada.
+    """
+    start, end = cyc.bounds(key)
+    following = shift_key(key, 1)
+    last = following if cyc.bounds(following)[0] <= today else key
+    groups: dict[tuple, dict[str, list[Row]]] = defaultdict(lambda: defaultdict(list))
+    for r in _rows(db, cyc, shift_key(key, -2), last):
+        if r.kind in (CategoryKind.EXPENSE, CategoryKind.INCOME) and not r.installment:
+            if abs(r.amount) >= _SHIFT_MIN:
+                groups[(r.kind, _normalize(r.label))][r.cycle].append(r)
+
+    def similar(rows: list[Row], ref: Decimal) -> list[Row]:
+        return [r for r in rows if _similar(abs(r.amount), ref)]
+
+    before_prev = shift_key(key, -2)
+    notes: list[dict] = []
+    for (kind, label), by_cycle in groups.items():
+        if not label:
+            continue
+        before = by_cycle.get(before_prev, []) + by_cycle.get(shift_key(key, -1), [])
+        if not before:
+            continue
+        ref = abs(before[-1].amount)
+        here = similar(by_cycle.get(key, []), ref)
+        prev_here = similar(by_cycle.get(shift_key(key, -1), []), ref)
+        after = similar(by_cycle.get(following, []), ref) if last == following else []
+        note = None
+        if not here and prev_here and len(after) >= 2:
+            note = {"kind": "shifted_out", "dates": [min(r.posted for r in after)]}
+        elif len(here) >= 2 and not prev_here and similar(by_cycle.get(before_prev, []), ref):
+            note = {"kind": "doubled", "dates": sorted(r.posted for r in here)}
+        if note:
+            sample = (after or here)[0]
+            notes.append(
+                {
+                    **note,
+                    "income": kind == CategoryKind.INCOME,
+                    "label": sample.label,
+                    "category_name": sample.category_name,
+                    "amount": ref,
+                }
+            )
+
+    if end <= today:
+        later = [
+            b for b in flow["bills"] if b["amount"] > 0 and b["due_date"] and b["due_date"] >= end
+        ]
+        if later:
+            notes.append(
+                {
+                    "kind": "bills_after",
+                    "amount": sum((b["amount"] for b in later), ZERO),
+                    "bills": later,
+                }
+            )
+    if flow["saved"] < 0:
+        notes.append({"kind": "withdrew", "amount": -flow["saved"]})
+    return notes
+
+
 # --- resumo do ciclo -----------------------------------------------------------------
 
 
 def _health_score(
     savings_rate: float | None, reserve_months: float | None, commitment: float | None
 ) -> dict:
-    """0-100: poupança (40), reserva de emergência (30), comprometimento fixo (30)."""
+    """0-100: poupança (40), reserva de emergência (30), comprometimento fixo (30).
+
+    A poupança é a dos 3 últimos ciclos fechados; o comprometimento soma contas fixas e
+    parcelas."""
     savings_pts = 40 * min(max((savings_rate or 0) / 0.20, 0), 1)
     reserve_pts = 30 * min(max((reserve_months or 0) / 6, 0), 1)
     if commitment is None:
@@ -353,6 +473,7 @@ def _health_score(
         commitment_pts = 30 * min(max((0.70 - commitment) / 0.40, 0), 1)
     return {
         "score": round(savings_pts + reserve_pts + commitment_pts),
+        "savings_rate": savings_rate,
         "savings_points": round(savings_pts, 1),
         "reserve_points": round(reserve_pts, 1),
         "commitment_points": round(commitment_pts, 1),
@@ -384,25 +505,37 @@ def summary(db: Session, key: str, today: date) -> dict:
     recurring_items = recurring(db, min(today, end - ONE_DAY), cyc=cyc)
     fixed_monthly = sum((r["monthly_amount"] for r in recurring_items), ZERO)
 
-    # Projeção (só no ciclo atual): gastos fixos entram uma vez no ciclo, e só o gasto
-    # variável é extrapolado pelos dias. Extrapolar tudo linearmente exageraria
-    # (aluguel e contas costumam cair no começo).
+    # Parcelas em andamento: compromisso de todo ciclo, como as contas fixas
+    installments_monthly = sum((i["installment_amount"] for i in installments(db)), ZERO)
+
+    # Projeção (só no ciclo atual): contas fixas e parcelas entram uma vez, pelo valor; só o
+    # gasto variável segue um ritmo. No começo do ciclo o ritmo atual é pouco confiável (uma
+    # compra grande no dia 2 viraria 15 compras), então ele pesa pelos dias já passados e o
+    # resto vem do ritmo dos ciclos anteriores.
     projected = None
     if start <= today < end:
         days = (end - start).days
         elapsed = (today - start).days + 1
         fixed_keys = {r["key"] for r in recurring_items}
         so_far = [r for r in rows if r.date <= today]
-        variable = _expense([r for r in so_far if _normalize(r.label) not in fixed_keys])
-        projected = max(fixed_monthly + variable / elapsed * days, _expense(so_far)).quantize(
-            Decimal("0.01")
+        variable = _expense(
+            [r for r in so_far if not r.installment and _normalize(r.label) not in fixed_keys]
         )
+        history = _rows(db, cyc, shift_key(key, -3), previous)
+        historical = typical_daily_variable(cyc, key, history, fixed_keys)
+        weight = Decimal(elapsed) / Decimal(days)
+        pace = weight * variable / elapsed + (1 - weight) * historical
+        in_cycle_installments = _expense([r for r in rows if r.installment])
+        estimate = fixed_monthly + in_cycle_installments + variable + pace * (days - elapsed)
+        projected = max(estimate, _expense(so_far)).quantize(_CENTS)
 
     flow = cycle_flow(db, cyc, key, today, card_list, liquid)
     previous_flow = cycle_flow(db, cyc, previous, today, card_list, liquid)
     savings_rate = _ratio(income - expense, income)
-    reserve_months = _ratio(liquid + invested, avg_expense)
-    commitment = _ratio(fixed_monthly, avg_income or income)
+    # A parte do saldo que já é das faturas a pagar não é reserva
+    reserve_months = _ratio(max(liquid - card_debt, ZERO) + invested, avg_expense)
+    commitment = _ratio(fixed_monthly + installments_monthly, avg_income or income)
+    score_savings_rate = _savings_rate_closed(db, cyc, key, today)
 
     return {
         "month": key,
@@ -414,6 +547,7 @@ def summary(db: Session, key: str, today: date) -> dict:
         "previous_expense": prev_expense,
         "savings_rate": savings_rate,
         "flow": flow,
+        "notes": cycle_notes(db, cyc, key, today, flow),
         "previous_result": previous_flow["result"],
         "projected_expense": projected,
         "liquid_balance": liquid,
@@ -427,8 +561,9 @@ def summary(db: Session, key: str, today: date) -> dict:
         "avg_monthly_income": avg_income,
         "emergency_reserve_months": reserve_months,
         "fixed_monthly": fixed_monthly,
+        "installments_monthly": installments_monthly,
         "fixed_commitment": commitment,
-        "health": _health_score(savings_rate, reserve_months, commitment),
+        "health": _health_score(score_savings_rate, reserve_months, commitment),
     }
 
 

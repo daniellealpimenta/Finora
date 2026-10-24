@@ -4,7 +4,7 @@ import { X } from "lucide-react";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 
 import { gsap, motion, prefersReducedMotion, useGSAP } from "@/lib/motion";
-import { IconButton } from "./ui";
+import { IconButton, cx } from "./ui";
 
 /**
  * Diálogo com entrada e saída animadas. Todo fechamento passa por `close(after)`, que roda a
@@ -13,10 +13,13 @@ import { IconButton } from "./ui";
 export function Dialog({
   title,
   onClose,
+  size = "md",
   children,
 }: {
   title: string;
   onClose: () => void;
+  /** lg: formulários com mais campos (ex.: ajustes da previsão) */
+  size?: "md" | "lg";
   children: (close: (after?: () => void) => void) => ReactNode;
 }) {
   const root = useRef<HTMLDivElement>(null);
@@ -62,14 +65,18 @@ export function Dialog({
   }, []);
 
   return (
-    <div ref={root} className="fixed inset-0 z-50 grid place-items-center px-4">
+    <div ref={root} className="fixed inset-0 z-50 grid place-items-center px-4 py-4">
       <div ref={veil} className="absolute inset-0 bg-black/45" onClick={() => close()} aria-hidden />
       <div
         ref={panel}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="relative w-full max-w-md rounded-card border border-card-edge bg-surface p-6"
+        className={cx(
+          // Rola por dentro quando não cabe na tela (celular, formulários longos)
+          "relative max-h-[calc(100dvh-32px)] w-full overflow-y-auto overscroll-contain rounded-card border border-card-edge bg-surface p-5 sm:p-6",
+          size === "lg" ? "max-w-xl" : "max-w-md",
+        )}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <h2 id={titleId} className="text-lg font-semibold tracking-[-0.01em]">

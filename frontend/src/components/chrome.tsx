@@ -148,7 +148,7 @@ export function Toaster() {
   const toasts = useToasts();
   return (
     <div
-      className="pointer-events-none fixed right-4 bottom-[calc(76px+env(safe-area-inset-bottom,0px))] z-[60] grid justify-items-end gap-2 sm:bottom-6"
+      className="pointer-events-none fixed right-4 bottom-[calc(148px+env(safe-area-inset-bottom,0px))] z-[60] grid justify-items-end gap-2 sm:right-6 sm:bottom-24"
       aria-live="polite"
     >
       {toasts.map((t) => (

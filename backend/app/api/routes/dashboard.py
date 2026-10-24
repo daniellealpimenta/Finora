@@ -1,14 +1,16 @@
 from datetime import date
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession
+from app.api.numbers import plain
 from app.db.models import Budget, Category, CategoryKind
 from app.services import analytics, forecast
+from app.services import cycles as cycle_service
 from app.services.periods import month_bounds
 
 router = APIRouter(tags=["dashboard"])
@@ -24,13 +26,25 @@ def _month(db: DbSession, month: str | None) -> str:
 @router.get("/dashboard/cycle")
 def cycle(_: CurrentUser, db: DbSession, month: Month = None) -> dict:
     """Início e fim do ciclo (o atual, sem `month`) e o cartão que define os ciclos."""
-    return analytics.current_cycle(db, date.today(), month)
+    return plain(analytics.current_cycle(db, date.today(), month))
+
+
+class CycleStartIn(BaseModel):
+    # null volta a seguir o fechamento do cartão principal
+    start_day: int | None = Field(default=None, ge=1, le=cycle_service.MAX_START_DAY)
+
+
+@router.put("/dashboard/cycle")
+def set_cycle_start(body: CycleStartIn, _: CurrentUser, db: DbSession) -> dict:
+    """Dia em que os ciclos começam (11 = de 11 a 10). Muda a divisão de todos os ciclos."""
+    cycle_service.save_start_day(db, body.start_day)
+    return plain(analytics.current_cycle(db, date.today()))
 
 
 @router.get("/dashboard/forecast")
 def cycle_forecast(_: CurrentUser, db: DbSession) -> dict:
     """Previsão do fim do ciclo atual: livre agora + entradas previstas − saídas previstas."""
-    return forecast.forecast(db, date.today())
+    return plain(forecast.forecast(db, date.today()))
 
 
 class IncomeRule(BaseModel):
@@ -41,6 +55,9 @@ class IncomeRule(BaseModel):
 
 class PlanningIn(BaseModel):
     tithe_rate: float = Field(default=0, ge=0, le=1)
+    # Meta de guardar por ciclo: % do que entra ("rate") ou valor fixo em R$ ("amount")
+    savings_mode: Literal["rate", "amount"] = "rate"
+    savings_rate: float = Field(default=forecast.DEFAULT_SAVINGS_RATE, ge=0, le=1)
     savings_goal: Decimal = Field(default=Decimal("0"), ge=0)
     incomes: dict[str, IncomeRule] = Field(default_factory=dict)
 
@@ -48,20 +65,20 @@ class PlanningIn(BaseModel):
 @router.get("/planning")
 def get_planning(_: CurrentUser, db: DbSession) -> dict:
     """Preferências da previsão: dízimo, meta do cofrinho e regras das entradas fixas."""
-    return forecast.get_planning(db)
+    return plain(forecast.get_planning(db))
 
 
 @router.put("/planning")
 def put_planning(body: PlanningIn, _: CurrentUser, db: DbSession) -> dict:
     value = body.model_dump(mode="json")
     value["savings_goal"] = float(body.savings_goal)
-    return forecast.save_planning(db, value)
+    return plain(forecast.save_planning(db, value))
 
 
 @router.get("/dashboard/summary")
 def summary(_: CurrentUser, db: DbSession, month: Month = None) -> dict:
     """KPIs do ciclo: a conta do ciclo, receitas, despesas, reserva, score."""
-    return analytics.summary(db, _month(db, month), date.today())
+    return plain(analytics.summary(db, _month(db, month), date.today()))
 
 
 @router.get("/dashboard/cashflow")
@@ -71,39 +88,39 @@ def cashflow(
     month: Month = None,
     months: Annotated[int, Query(ge=1, le=36)] = 12,
 ) -> list[dict]:
-    return analytics.cashflow(db, _month(db, month), months)
+    return plain(analytics.cashflow(db, _month(db, month), months))
 
 
 @router.get("/dashboard/categories")
 def categories(_: CurrentUser, db: DbSession, month: Month = None) -> list[dict]:
-    return analytics.categories_breakdown(db, _month(db, month))
+    return plain(analytics.categories_breakdown(db, _month(db, month)))
 
 
 @router.get("/dashboard/daily")
 def daily(_: CurrentUser, db: DbSession, month: Month = None) -> list[dict]:
-    return analytics.daily(db, _month(db, month))
+    return plain(analytics.daily(db, _month(db, month)))
 
 
 @router.get("/dashboard/merchants")
 def merchants(_: CurrentUser, db: DbSession, month: Month = None) -> list[dict]:
-    return analytics.top_merchants(db, _month(db, month))
+    return plain(analytics.top_merchants(db, _month(db, month)))
 
 
 @router.get("/dashboard/recurring")
 def recurring(_: CurrentUser, db: DbSession) -> list[dict]:
-    return analytics.recurring(db, date.today())
+    return plain(analytics.recurring(db, date.today()))
 
 
 @router.get("/dashboard/commitments")
 def commitments(_: CurrentUser, db: DbSession) -> list[dict]:
     """Parcelas e lançamentos futuros já contratados, por ciclo."""
-    return analytics.future_commitments(db, date.today())
+    return plain(analytics.future_commitments(db, date.today()))
 
 
 @router.get("/dashboard/installments")
 def installments(_: CurrentUser, db: DbSession) -> list[dict]:
     """Compras parceladas em andamento: pagas, faltam, valor que falta."""
-    return analytics.installments(db)
+    return plain(analytics.installments(db))
 
 
 # --- orçamentos ---------------------------------------------------------------------

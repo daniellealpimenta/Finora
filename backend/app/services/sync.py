@@ -38,6 +38,7 @@ from app.db.models import (
     TransactionStatus,
 )
 from app.integrations.pluggy.client import PluggyClient, PluggyError
+from app.services import yields
 from app.services.cards import short_bank_name
 from app.services.categories import Categorizer, ensure_categories, link_transfers
 
@@ -393,6 +394,8 @@ def sync_all(db: Session, connection_ids: list[int] | None = None) -> SyncResult
                 result.errors.append(message)
     # Pares (fatura paga na conta x pagamento no cartão) podem cruzar conexões
     link_transfers(db)
+    # Saldo do dia de cada aplicação: é a diferença entre dias que mostra o rendimento diário
+    yields.record_snapshots(db, date.today())
     db.commit()
     return result
 

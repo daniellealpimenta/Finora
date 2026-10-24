@@ -4,7 +4,6 @@ import { ArrowDownRight, ArrowUpRight, CalendarRange, List, Search } from "lucid
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CategoryIcon, categoryStyle } from "@/components/category-icon";
-import type { CategoryRow } from "@/components/dashboard/types";
 import { Dialog } from "@/components/dialog";
 import {
   Button,
@@ -22,6 +21,7 @@ import {
   qs,
   type Account,
   type Category,
+  type CategorySpend,
   type Transaction,
   type TransactionPage,
 } from "@/lib/api";
@@ -67,18 +67,26 @@ export default function TransacoesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [editing, setEditing] = useState<{ tx: Transaction; categoryId: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [breakdown, setBreakdown] = useState<CategoryRow[]>([]);
+  const [breakdown, setBreakdown] = useState<CategorySpend[]>([]);
   const root = useRef<HTMLDivElement>(null);
 
   usePageEnter(root, data !== null);
 
-  // Cards de categoria: gasto de cada uma no ciclo escolhido
-  useEffect(() => {
-    if (!month) return;
-    api<CategoryRow[]>(`/dashboard/categories${qs({ month })}`)
-      .then((rows) => setBreakdown(rows.filter((r) => r.spent > 0)))
+  // Cards de categoria: gasto de cada uma com os mesmos filtros da lista (ciclo ou todos,
+  // conta, busca), menos o de categoria, para os cards continuarem lá ao escolher um
+  const loadBreakdown = useCallback(() => {
+    if (!allCycles && !cycleKey) return;
+    api<CategorySpend[]>(
+      `/transactions/by-category${qs({ month: month || null, account_id: accountId, q: q.trim() })}`,
+    )
+      .then(setBreakdown)
       .catch((e) => setError(e.message));
-  }, [month]);
+  }, [month, allCycles, cycleKey, accountId, q]);
+
+  useEffect(() => {
+    const t = setTimeout(loadBreakdown, q ? 250 : 0);
+    return () => clearTimeout(t);
+  }, [loadBreakdown, q]);
 
   useEffect(() => {
     Promise.all([api<Account[]>("/accounts"), api<Category[]>("/categories")])
@@ -187,7 +195,7 @@ export default function TransacoesPage() {
           )}
         </Card>
 
-        {month && breakdown.length > 0 && (
+        {breakdown.length > 0 && (
           <CategoryCards
             month={month}
             rows={breakdown}
@@ -330,6 +338,7 @@ export default function TransacoesPage() {
             setEditing(null);
             notify("Categoria atualizada.");
             load();
+            loadBreakdown();
           }}
         />
       )}
@@ -337,7 +346,7 @@ export default function TransacoesPage() {
   );
 }
 
-/** Categorias do ciclo como cards: clicar filtra a lista, clicar de novo limpa. */
+/** Gasto por categoria como cards: clicar filtra a lista, clicar de novo limpa. */
 function CategoryCards({
   month,
   rows,
@@ -345,13 +354,15 @@ function CategoryCards({
   selected,
   onSelect,
 }: {
+  /** "" = todos os ciclos */
   month: string;
-  rows: CategoryRow[];
+  rows: CategorySpend[];
   byId: Map<number, Category>;
   selected: string;
   onSelect: (id: string) => void;
 }) {
-  const total = rows.reduce((sum, r) => sum + r.spent, 0);
+  const total = rows.reduce((sum, r) => sum + Number(r.spent), 0);
+  const scope = month ? `do ciclo de ${cycleName(month)}` : "de todos os ciclos";
   const card = (active: boolean) =>
     cx(
       "grid w-40 shrink-0 snap-start content-start gap-2 rounded-card border bg-surface p-3.5 text-left",
@@ -359,9 +370,9 @@ function CategoryCards({
       active ? "border-accent outline-2 outline-offset-0 outline-accent" : "border-card-edge",
     );
   return (
-    <section data-enter aria-label={`Gastos por categoria no ciclo de ${cycleName(month)}`} className="grid gap-2">
+    <section data-enter aria-label={`Gastos por categoria ${scope}`} className="grid gap-2">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-[15px] font-semibold">Categorias do ciclo de {cycleName(month)}</h2>
+        <h2 className="text-[15px] font-semibold">Gastos por categoria {scope}</h2>
         <span className="text-xs text-muted">clique para filtrar</span>
       </div>
       <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pt-1 pb-2">
@@ -369,21 +380,24 @@ function CategoryCards({
           <IconBadge icon={List} color="var(--accent)" />
           <span className="text-sm font-semibold">Todas</span>
           <span className="text-lg font-light tabular">{money(total)}</span>
-          <span className="text-xs text-muted">{rows.length} categorias</span>
+          <span className="text-xs text-muted">
+            {rows.length} {rows.length === 1 ? "categoria" : "categorias"}
+          </span>
         </button>
         {rows.map((r) => {
           const cat = r.category_id ? byId.get(r.category_id) : undefined;
           const id = r.category_id ? String(r.category_id) : "";
           if (!id) return null;
           const active = selected === id;
-          const share = total ? r.spent / total : 0;
+          const spent = Number(r.spent);
+          const share = total ? spent / total : 0;
           return (
             <button key={id} type="button" className={card(active)} aria-pressed={active} onClick={() => onSelect(id)}>
               <CategoryIcon categoryKey={cat?.key} kind={cat?.kind ?? "EXPENSE"} />
               <span className="truncate text-sm font-semibold">{r.category_name}</span>
-              <span className="text-lg font-light tabular">{money(r.spent)}</span>
+              <span className="text-lg font-light tabular">{money(spent)}</span>
               <Meter thin value={share} color={categoryStyle(cat?.key, cat?.kind ?? "EXPENSE").color} />
-              <span className="text-xs text-muted tabular">{percent(share)} do mês</span>
+              <span className="text-xs text-muted tabular">{percent(share)} do total</span>
             </button>
           );
         })}

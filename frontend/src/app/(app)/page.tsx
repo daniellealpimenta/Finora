@@ -251,7 +251,13 @@ export default function Dashboard() {
                 forecast && s.cycle.is_current ? <ForecastCard data={forecast} onChanged={loadForecast} /> : null,
               health: <HealthCard health={s.health} />,
               reserve: <ReserveCard months={s.emergency_reserve_months} avg={s.avg_monthly_expense} />,
-              fixed: <FixedCard commitment={s.fixed_commitment} monthly={s.fixed_monthly} />,
+              fixed: (
+                <FixedCard
+                  commitment={s.fixed_commitment}
+                  monthly={s.fixed_monthly}
+                  installments={Number(s.installments_monthly ?? 0)}
+                />
+              ),
               bills: cards.length ? <BillsCard cards={cards} /> : null,
               cards: cards.length ? <CardsCard cards={cards} /> : null,
               savings: <SavingsCard pots={pots} looseTotal={looseTotal} saved={s.flow.saved} month={data.month} />,

@@ -18,18 +18,12 @@ import {
   cx,
   inputClass,
 } from "@/components/ui";
-import { api, type Investment, type SavingsPot } from "@/lib/api";
-import { earnedText, money, percent } from "@/lib/format";
+import { api, type Investment, type PotYields, type SavingsPot } from "@/lib/api";
+import { earnedText, money, parseMoney, percent, shortDate } from "@/lib/format";
 import { usePageEnter } from "@/lib/motion";
 import { notify } from "@/lib/signals";
 
 const POT_COLOR = "var(--cat-care)";
-
-/** "1.234,56" ou "1234.56" -> número; vazio -> null; inválido -> NaN. */
-function parseMoney(raw: string): number | null {
-  const clean = raw.replace(/\s|R\$/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
-  return clean === "" ? null : Number(clean);
-}
 
 const fullDate = (iso: string | null) =>
   iso ? new Date(`${iso}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }) : "";
@@ -440,8 +434,92 @@ function PotCard({
         )}
       </div>
 
+      {items.length > 0 && <DailyYields potId={pot.id} />}
       {items.length > 0 && <Applications items={items} pots={pots} onMove={onMove} />}
     </Card>
+  );
+}
+
+const weekday = (iso: string) =>
+  new Date(`${iso}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "short", day: "numeric", month: "short" });
+
+/**
+ * Quanto o cofrinho rende por dia. Busca só ao abrir. A média vem desde cada aplicação; o dia a
+ * dia, dos saldos que o app grava a cada sincronização (começa no primeiro registro).
+ */
+function DailyYields({ potId }: { potId: number }) {
+  const [data, setData] = useState<PotYields | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function load() {
+    if (data || error) return;
+    api<PotYields>(`/pots/${potId}/yields`)
+      .then(setData)
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }
+
+  const average = data ? Number(data.average_per_business_day) : 0;
+  const top = data ? Math.max(0.01, ...data.daily.map((d) => Number(d.earned))) : 1;
+
+  return (
+    <details
+      className="group rounded-control bg-surface-2/60 open:bg-transparent"
+      onToggle={(e) => (e.currentTarget as HTMLDetailsElement).open && load()}
+    >
+      <summary className="flex min-h-10 items-center rounded-control px-3 text-sm font-semibold text-muted hover:text-foreground">
+        Ver rendimentos diários
+      </summary>
+      <div className="mt-2 grid gap-3 px-1">
+        {error && <ErrorNote>{error}</ErrorNote>}
+        {!data && !error && <p className="text-sm text-muted">Carregando…</p>}
+        {data && (
+          <>
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="text-[22px] font-light tracking-[-0.02em] text-positive tabular">
+                +{money(average)}
+              </span>
+              <span className="text-sm text-muted">
+                por dia útil, ~{money(average * 21)} por mês. Média desde cada aplicação, antes do IR.
+              </span>
+            </div>
+            {data.daily.length === 0 ? (
+              <p className="text-sm text-muted">
+                O app começou a registrar o saldo
+                {data.tracking_since ? ` em ${shortDate(data.tracking_since)}` : ""}. O rendimento de cada dia aparece a
+                partir da próxima sincronização.
+              </p>
+            ) : (
+              <ul className="grid divide-y divide-border" aria-label="Rendimento por dia">
+                {data.daily.map((d) => {
+                  const earned = Number(d.earned);
+                  return (
+                    <li key={d.day} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 py-2.5">
+                      <span className="text-sm">
+                        {d.days > 1 ? `${shortDate(d.since)} a ${shortDate(d.day)}` : weekday(d.day)}
+                        {d.days > 1 && (
+                          <span className="text-xs text-muted">
+                            {" "}
+                            ({d.business_days} {d.business_days === 1 ? "dia útil" : "dias úteis"})
+                          </span>
+                        )}
+                        {d.business_days === 0 && <span className="text-xs text-muted"> (fim de semana)</span>}
+                      </span>
+                      <span className={cx("text-sm font-semibold tabular", earned > 0 && "text-positive")}>
+                        {earned > 0 ? "+" : ""}
+                        {money(earned)}
+                      </span>
+                      <span className="col-span-2">
+                        <Meter thin value={earned / top} color="var(--positive)" />
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </>
+        )}
+      </div>
+    </details>
   );
 }
 

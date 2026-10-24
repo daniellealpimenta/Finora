@@ -110,6 +110,8 @@ escuro, o que permite usá-la também como texto (palavras marcadas na frase-res
 | Orçamentos | `--cat-move` |
 | Cofrinhos | `--cat-care` (rosa, a cor do Pila) |
 | Contas | `--cat-fun` |
+| Desejos | `--cat-shop` |
+| Assistente | `--cat-fin` (no celular, botão no topo; a barra inferior fica com 6) |
 
 **Categorias** (chave do backend → família → ícone Lucide):
 
@@ -158,6 +160,10 @@ Regras:
   `--pila-ink #3A1426`, moeda `--coin #D2AC6A` / `--coin-line #6B5221`.
 - Movimento: entra subindo 8px com fade (0,45s `power3.out`). Com `coin`, uma moeda cai pela
   fenda uma vez (0,5s `power2.in`). Sem loop, sem overshoot (ele tem mais de 48px).
+- Botão do assistente (`components/assistant/fab.tsx`): o Pila de 40px num botão redondo de 56px
+  no canto inferior direito, em todas as páginas menos a aba Assistente. Abre a conversa num
+  painel (no celular, quase a tela toda, acima da barra de seções). Por flutuar sobre o conteúdo,
+  usa a borda `--card-edge` dos diálogos, sem sombra. Os avisos (toasts) sobem para acima dele.
 
 ## Painel personalizável
 

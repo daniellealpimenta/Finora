@@ -1,4 +1,10 @@
-"""Ciclos: o período entre dois fechamentos da fatura do cartão principal.
+"""Ciclos: o período em que o usuário planeja o dinheiro.
+
+Se o usuário escolheu um dia de início (`AppSetting` "cycle", `start_day`), o ciclo vai desse
+dia até a véspera dele no mês seguinte (dia 11: 11/09 a 10/10). Serve para quem paga as contas
+num dia fixo: o salário do fim do mês e as contas do dia 10 ficam no mesmo ciclo.
+
+Sem essa escolha, o ciclo é o período entre dois fechamentos da fatura do cartão principal.
 
 O ciclo de setembro começa no dia seguinte ao fechamento de setembro e termina no
 fechamento de outubro (ex.: 09/09 a 08/10). A chave é o mês em que ele começa ("2026-09").
@@ -27,7 +33,7 @@ from datetime import date, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Account, AccountType, CardBill, Transaction
+from app.db.models import Account, AccountType, AppSetting, CardBill, Transaction
 from app.services.periods import month_bounds, month_key
 
 DEFAULT_GAP = timedelta(days=7)
@@ -36,6 +42,9 @@ MIN_GAP_SAMPLES = 3
 ONE_DAY = timedelta(days=1)
 # Faturas usadas para escolher o cartão principal
 _REFERENCE_BILLS = 6
+SETTING_KEY = "cycle"
+# Até 28: todo mês tem esse dia, então todo ciclo começa no mesmo dia
+MAX_START_DAY = 28
 
 
 def clamp_day(year: int, month: int, day: int) -> date:
@@ -115,12 +124,19 @@ class CardSchedule:
 class Cycles:
     reference: CardSchedule | None
     cards: dict[int, CardSchedule]
+    start_day: int | None = None  # escolhido pelo usuário; senão, o fechamento do principal
     _bounds: dict[str, tuple[date, date]] = field(default_factory=dict)
 
     def bounds(self, key: str) -> tuple[date, date]:
         """Ciclo como intervalo [início, fim) de datas."""
         if key not in self._bounds:
-            if self.reference is None:
+            if self.start_day:
+                year, month = (int(p) for p in key.split("-"))
+                self._bounds[key] = (
+                    clamp_day(year, month, self.start_day),
+                    clamp_day(*_shift(year, month, 1), self.start_day),
+                )
+            elif self.reference is None:
                 self._bounds[key] = month_bounds(key)
             else:
                 year, month = (int(p) for p in key.split("-"))
@@ -164,6 +180,21 @@ class Cycles:
 def bill_id_of(raw: dict | None) -> str | None:
     """Fatura a que o lançamento de cartão pertence (creditCardMetadata.billId)."""
     return ((raw or {}).get("creditCardMetadata") or {}).get("billId")
+
+
+def get_start_day(db: Session) -> int | None:
+    setting = db.get(AppSetting, SETTING_KEY)
+    return (setting.value or {}).get("start_day") if setting else None
+
+
+def save_start_day(db: Session, day: int | None) -> None:
+    """Dia em que o ciclo começa; None volta a seguir o fechamento do cartão principal."""
+    setting = db.get(AppSetting, SETTING_KEY)
+    if setting is None:
+        db.add(AppSetting(key=SETTING_KEY, value={"start_day": day}))
+    else:
+        setting.value = {**(setting.value or {}), "start_day": day}
+    db.commit()
 
 
 def load(db: Session) -> Cycles:
@@ -210,4 +241,4 @@ def load(db: Session) -> Cycles:
         weight[card.id] = float(sum(b.total_amount for b in bills[-_REFERENCE_BILLS:]))
 
     reference = schedules[max(weight, key=weight.get)] if weight else None
-    return Cycles(reference=reference, cards=schedules)
+    return Cycles(reference=reference, cards=schedules, start_day=get_start_day(db))

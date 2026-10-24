@@ -5,8 +5,8 @@ import type { ReactNode } from "react";
 
 const CYCLE_NOTE = (
   <p className="text-muted">
-    Ciclo = do dia seguinte ao fechamento da fatura até o próximo fechamento. As compras no cartão contam no ciclo em
-    que a fatura delas fecha.
+    Ciclo = do dia de início escolhido em Contas até a véspera dele no mês seguinte (sem escolha, do dia seguinte ao
+    fechamento da fatura até o próximo). As compras no cartão contam no ciclo em que a fatura delas fecha.
   </p>
 );
 
@@ -77,15 +77,17 @@ export const INFO_HEALTH: ReactNode = (
     <p>Uma nota de 0 a 100 que soma três partes:</p>
     <ul>
       <li>
-        <strong>Taxa de poupança (até 40):</strong> quanto das receitas do ciclo não virou despesa, ou seja, (receitas −
-        despesas) ÷ receitas. Com 20% ou mais você ganha os 40 pontos; com 10%, ganha 20.
+        <strong>Taxa de poupança (até 40):</strong> quanto das receitas não virou despesa, ou seja, (receitas − despesas)
+        ÷ receitas, somando os 3 últimos ciclos fechados. O ciclo em andamento fica de fora porque oscila demais: logo
+        depois do salário a taxa parece altíssima e, antes dele, negativa. Com 20% ou mais você ganha os 40 pontos; com
+        10%, ganha 20.
       </li>
       <li>
         <strong>Reserva (até 30):</strong> meses de reserva de emergência. Com 6 meses ou mais, ganha os 30 pontos.
       </li>
       <li>
-        <strong>Gastos fixos (até 30):</strong> quanto da renda vai para gastos recorrentes. Até 30% da renda dá 30
-        pontos; a partir de 70%, zero.
+        <strong>Gastos fixos (até 30):</strong> quanto da renda vai para gastos recorrentes e parcelas. Até 30% da renda
+        dá 30 pontos; a partir de 70%, zero.
       </li>
     </ul>
     <p className="text-muted">70 ou mais é Boa; de 40 a 69, Atenção; abaixo de 40, Crítica.</p>
@@ -96,7 +98,8 @@ export const INFO_RESERVE: ReactNode = (
   <>
     <p>Quantos meses você se mantém, no seu padrão atual de gastos, se a renda parar hoje.</p>
     <p>
-      <strong>Cálculo:</strong> (saldo em conta + cofrinhos) ÷ despesa média dos 3 ciclos anteriores.
+      <strong>Cálculo:</strong> (saldo em conta − faturas a pagar + cofrinhos) ÷ despesa média dos 3 ciclos anteriores.
+      O dinheiro que já é do cartão não conta como reserva.
     </p>
     <p className="text-muted">Meta: 6 meses. A partir de 6 meses é Boa; de 3 a 6, Atenção; abaixo de 3, Crítica.</p>
   </>
@@ -104,13 +107,17 @@ export const INFO_RESERVE: ReactNode = (
 
 export const INFO_FIXED: ReactNode = (
   <>
-    <p>Quanto da sua renda já está comprometido antes de o ciclo começar, com assinaturas e contas que se repetem.</p>
     <p>
-      <strong>Cálculo:</strong> soma dos gastos recorrentes por ciclo ÷ receita média dos 3 ciclos anteriores.
+      Quanto da sua renda já está comprometido antes de o ciclo começar, com assinaturas, contas que se repetem e
+      parcelas.
+    </p>
+    <p>
+      <strong>Cálculo:</strong> (gastos recorrentes + parcelas em andamento, por ciclo) ÷ receita média dos 3 ciclos
+      anteriores.
     </p>
     <p>
       Um gasto conta como recorrente quando aparece em pelo menos 3 dos últimos 6 ciclos, com valor parecido (até 25%
-      de diferença), e ainda está ativo. Compras parceladas ficam de fora.
+      de diferença), e ainda está ativo. As parcelas entram pelo valor de cada uma, até a última.
     </p>
     <p className="text-muted">Ideal: até 30% da renda. Até 50% é Atenção; acima disso, Crítica.</p>
   </>
@@ -264,8 +271,8 @@ export const INFO_CARDS: ReactNode = (
 export const INFO_FORECAST: ReactNode = (
   <>
     <p>
-      Como o ciclo atual deve terminar se tudo sair como de costume. O <strong>Livre agora</strong> só conta o que já
-      aconteceu; aqui entram também as previsões.
+      Quanto dá para gastar no dia a dia até o fim do ciclo <strong>sem deixar de guardar</strong>. Fechar o ciclo no
+      zero não é saudável: a meta de guardar sai antes da conta.
     </p>
     <ul>
       <li>
@@ -274,25 +281,25 @@ export const INFO_FORECAST: ReactNode = (
         e entram no Livre agora.
       </li>
       <li>
-        <strong>Dízimo:</strong> o percentual sobre o que sobrou do ciclo anterior mais tudo que entra no ciclo, menos o
-        que já foi dado.
+        <strong>Contas fixas e parcelas que faltam:</strong> recorrentes que ainda não apareceram no ciclo e parcelas
+        que ainda não entraram na fatura dele.
       </li>
       <li>
-        <strong>Cofrinho:</strong> a meta por ciclo menos o que você já guardou nele (a parte de quem divide o cofrinho
-        não conta).
+        <strong>Meta de guardar:</strong> por padrão, 20% do que entra no ciclo (a regra 50/30/20: necessidades,
+        desejos e guardar). Vale o que vai para o cofrinho e o que sobra na conta.
       </li>
       <li>
-        <strong>Contas fixas que faltam:</strong> assinaturas e contas recorrentes que ainda não apareceram no ciclo.
-      </li>
-      <li>
-        <strong>Dia a dia:</strong> o seu gasto médio por dia nos 3 últimos ciclos (sem contas fixas, dízimo e parcelas)
-        vezes os dias que faltam.
+        <strong>Dízimo:</strong> se ligado, o percentual sobre o que sobrou do ciclo anterior mais tudo que entra no
+        ciclo, menos o que já foi dado.
       </li>
     </ul>
     <p>
-      <strong>Dá para gastar por dia</strong> = (livre agora + entradas previstas − dízimo − cofrinho − contas fixas) ÷
-      dias que faltam. É o quanto dá para gastar no dia a dia e ainda fechar o ciclo no zero.
+      <strong>Até a próxima entrada</strong> mostra o que o dinheiro de hoje precisa cobrir até o salário cair, já
+      tirando as contas que vencem antes dele.
     </p>
-    <p className="text-muted">Em Ajustar você muda o dízimo, a meta do cofrinho e até quando cada entrada conta.</p>
+    <p className="text-muted">
+      O seu ritmo é o gasto médio por dia nos 3 últimos ciclos, sem contas fixas, dízimo e parcelas. Em Ajustar você
+      muda a meta, o dízimo e até quando cada entrada conta.
+    </p>
   </>
 );

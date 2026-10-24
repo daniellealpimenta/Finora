@@ -5,7 +5,8 @@ import { useEffect, useState } from "react";
 import { api, qs } from "./api";
 import { monthLabel, shortDate } from "./format";
 
-/** Ciclo da fatura (GET /dashboard/cycle): do dia seguinte a um fechamento até o próximo. */
+/** Ciclo (GET /dashboard/cycle): do dia escolhido pelo usuário até a véspera dele no mês seguinte,
+ * ou, sem escolha, do dia seguinte a um fechamento da fatura até o próximo. */
 export type CycleInfo = {
   /** Mês em que o ciclo começa: "2026-09" = ciclo de setembro */
   key: string;
@@ -15,6 +16,8 @@ export type CycleInfo = {
   is_current: boolean;
   current_key: string;
   reference_card: string | null;
+  /** Dia em que os ciclos começam, escolhido em Contas (null: segue o fechamento do cartão) */
+  start_day: number | null;
 };
 
 /** "setembro" (com o ano quando não é o corrente). */

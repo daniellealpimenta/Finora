@@ -1,6 +1,8 @@
+import ipaddress
 import re
 from functools import lru_cache
 from pathlib import Path, PureWindowsPath
+from urllib.parse import urlsplit
 
 from platformdirs import user_data_dir
 from pydantic import field_validator
@@ -37,6 +39,10 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = True
     sync_interval_hours: float = 6
 
+    # Assistente: Ollama rodando nesta máquina. Só aceita endereço local (validador abaixo),
+    # para nenhum dado financeiro sair do computador, nem com um .env errado.
+    llm_base_url: str = "http://127.0.0.1:11434"
+
     @field_validator("database_url")
     @classmethod
     def _path_to_sqlite_url(cls, value: str) -> str:
@@ -48,6 +54,18 @@ class Settings(BaseSettings):
         if re.match(r"^[A-Za-z]:[\\/]", value):
             return f"sqlite:///{PureWindowsPath(value).as_posix()}"
         return f"sqlite:///{Path(value).expanduser().as_posix()}"
+
+    @field_validator("llm_base_url")
+    @classmethod
+    def _loopback_only(cls, value: str) -> str:
+        host = urlsplit(value).hostname or ""
+        try:
+            local = ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            local = host == "localhost"
+        if not local:
+            raise ValueError("llm_base_url precisa apontar para esta máquina (127.0.0.1)")
+        return value.rstrip("/")
 
     @property
     def cors_origin_list(self) -> list[str]:

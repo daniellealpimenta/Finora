@@ -77,14 +77,25 @@ def test_summary_indices(db, data):
     assert s["expense"] == Decimal("1455.90")
     assert s["savings_rate"] == pytest.approx(3544.10 / 5000)
     assert s["previous_expense"] == Decimal("855.90")
-    # Fixo (Netflix 55,90) uma vez + variável (mercado 1400) extrapolado: 1400 / 15 * 31
-    assert s["projected_expense"] == Decimal("2949.23")
+    # Fixo (Netflix 55,90) uma vez + variável (mercado 1400) + 16 dias no ritmo misto: o atual
+    # (1400 / 15) pesa 15/31 e o dos 3 ciclos anteriores (2400 / 92 dias) o resto
+    pace = Decimal(15) / 31 * Decimal(1400) / 15 + Decimal(16) / 31 * Decimal("26.09")
+    assert s["projected_expense"] == (Decimal("1455.90") + pace * 16).quantize(Decimal("0.01"))
     assert s["liquid_balance"] == Decimal("10000")
     assert s["card_debt"] == Decimal("500")
-    assert s["emergency_reserve_months"] == pytest.approx(10000 / 855.90)
+    # A reserva desconta o que já é do cartão
+    assert s["emergency_reserve_months"] == pytest.approx(9500 / 855.90)
     assert s["fixed_monthly"] == Decimal("55.90")
     assert s["fixed_commitment"] == pytest.approx(55.90 / 5000)
     assert s["health"]["score"] == 100
+    # Score usa a poupança dos ciclos fechados (jul-set), não a do ciclo pela metade
+    assert s["health"]["savings_rate"] == pytest.approx((15000 - 3 * 855.90) / 15000)
+
+
+def test_projection_early_in_cycle_leans_on_history(db, data):
+    # Dia 2 com o mercado de 1500 já lançado: extrapolar só o ritmo atual daria ~22 mil
+    s = analytics.summary(db, "2026-10", date(2026, 10, 2))
+    assert s["projected_expense"] < Decimal("3500")
 
 
 def test_recurring_detects_subscription_but_not_variable_spending(db, data):
@@ -162,6 +173,12 @@ def test_dashboard_endpoints_respond(client, data, auth_headers):
         resp = client.get(f"/dashboard/{path}", params={"month": "2026-10"}, headers=auth_headers)
         assert resp.status_code == 200, (path, resp.text)
 
+    # Dinheiro chega como número: o front soma e desenha gráficos com esses campos
+    summary = client.get("/dashboard/summary", params={"month": "2026-10"}, headers=auth_headers)
+    assert summary.json()["income"] == 5000 and isinstance(summary.json()["flow"]["result"], float)
+    daily = client.get("/dashboard/daily", params={"month": "2026-10"}, headers=auth_headers)
+    assert all(isinstance(d["current"], float) for d in daily.json())
+
 
 def test_cash_view_and_cofrinhos_count_in_reserve(db, data):
     before = analytics.summary(db, "2026-10", TODAY)
@@ -187,9 +204,9 @@ def test_cash_view_and_cofrinhos_count_in_reserve(db, data):
     # Regime de caixa: 10.000 em conta menos os 500 devidos no cartão
     assert s["available_now"] == Decimal("9500")
     assert (s["next_bill_due"], s["next_bill_amount"]) == (date(2026, 10, 20), Decimal("500"))
-    # A reserva passa a contar conta corrente + cofrinhos
+    # A reserva passa a contar o livre em conta + cofrinhos
     assert s["emergency_reserve_months"] == pytest.approx(
-        before["emergency_reserve_months"] * 12000 / 10000
+        before["emergency_reserve_months"] * 11500 / 9500
     )
 
 
@@ -241,3 +258,37 @@ def test_installments_progress_for_both_dating_styles(db, data):
     cadeira = found["CADEIRA"]
     assert (cadeira["paid"], cadeira["remaining"], cadeira["first_month"]) == (1, 2, "2026-09")
     assert list(found) == ["NOTEBOOK", "CADEIRA", "TENIS"]  # maior valor que falta primeiro
+
+    # Parcelas entram no comprometimento junto com as contas fixas
+    s = analytics.summary(db, "2026-10", TODAY)
+    assert s["installments_monthly"] == Decimal("756.66")
+    assert s["fixed_commitment"] == pytest.approx((55.90 + 756.66) / 5000)
+
+
+def test_notes_flag_payment_that_fell_in_the_next_cycle(db, data):
+    checking = db.scalar(select(Account).where(Account.type == AccountType.CHECKING))
+    # Boleto de todo ciclo: em julho, nenhum em agosto, dois em setembro (um é o de agosto)
+    for i, d in enumerate((date(2026, 7, 6), date(2026, 9, 1), date(2026, 9, 30))):
+        db.add(
+            Transaction(
+                account_id=checking.id,
+                external_id=f"boleto{i}",
+                source=TransactionSource.MANUAL,
+                date=d,
+                amount=Decimal("-887.18"),
+                description="ESCOLA BOA",
+                category_id=data["education"],
+            )
+        )
+    db.commit()
+
+    aug = analytics.summary(db, "2026-08", TODAY)["notes"]
+    assert [(n["kind"], n["label"], n["amount"], n["dates"]) for n in aug] == [
+        ("shifted_out", "ESCOLA BOA", Decimal("887.18"), [date(2026, 9, 1)])
+    ]
+    sep = analytics.summary(db, "2026-09", TODAY)["notes"]
+    assert [(n["kind"], n["dates"]) for n in sep] == [
+        ("doubled", [date(2026, 9, 1), date(2026, 9, 30)])
+    ]
+    # Sem desvio: salário e mercado caem uma vez por ciclo
+    assert analytics.summary(db, "2026-07", TODAY)["notes"] == []

@@ -2,7 +2,7 @@
 
 Roda só local: sem webhook (a Pluggy não alcança a sua máquina), então buscamos
 os dados a cada SYNC_INTERVAL_HOURS. Ao subir a API, sincroniza se o último
-sync estiver mais velho que o intervalo.
+sync estiver mais velho que o intervalo. No mesmo laço, rechecamos o preço dos desejos.
 """
 
 import logging
@@ -15,6 +15,7 @@ from app.core.config import get_settings
 from app.db.models import Connection
 from app.db.session import SessionLocal
 from app.services.sync import run_sync
+from app.services.wishlist import refresh_prices
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,12 @@ class SyncScheduler:
                     run_sync(SessionLocal)
             except Exception:
                 logger.exception("Erro no agendador de sync")
+            try:
+                # Preço dos desejos com link: cada um é rechecado uma vez por dia
+                with SessionLocal() as db:
+                    refresh_prices(db)
+            except Exception:
+                logger.exception("Erro ao atualizar preços da lista de desejos")
             # Reavalia a cada 15 min; só sincroniza quando o intervalo venceu
             self._stop.wait(15 * 60)
 

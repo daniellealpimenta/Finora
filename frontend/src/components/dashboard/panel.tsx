@@ -47,11 +47,33 @@ export const CARDS: Record<CardId, { title: string; span: Span; color: string }>
 const DEFAULT_ORDER = Object.keys(CARDS) as CardId[];
 const STORAGE_KEY = "mf_painel_v1";
 
-const SPAN_CLASS: Record<Span, string> = {
-  full: "md:col-span-6",
-  half: "md:col-span-3",
-  third: "md:col-span-2",
+const SPAN_COLS: Record<Span, number> = { full: 6, half: 3, third: 2 };
+// Classes completas (o Tailwind só gera o que aparece escrito no código)
+const COL_CLASS: Record<number, string> = {
+  2: "md:col-span-2",
+  3: "md:col-span-3",
+  4: "md:col-span-4",
+  5: "md:col-span-5",
+  6: "md:col-span-6",
 };
+
+/**
+ * Colunas de cada card na grade de 6. Quando o próximo card não cabe na linha (ou acabou a
+ * lista), o último da linha estica até o fim dela: nada de buraco nem card sozinho pela metade.
+ */
+export function packRows(spans: Span[]): number[] {
+  const cols = spans.map((s) => SPAN_COLS[s]);
+  let used = 0;
+  cols.forEach((c, i) => {
+    if (used + c > 6) {
+      cols[i - 1] += 6 - used;
+      used = 0;
+    }
+    used += c;
+  });
+  if (cols.length && used < 6) cols[cols.length - 1] += 6 - used;
+  return cols;
+}
 
 type Layout = { order: CardId[]; hidden: CardId[] };
 
@@ -131,18 +153,21 @@ export function PanelGrid({
 }) {
   const [dragging, setDragging] = useState<CardId | null>(null);
   const visible = layout.order.filter((id) => !layout.hidden.includes(id));
+  // Só os que vão aparecer entram na conta das linhas (card sem dados some fora da edição)
+  const shown = visible.filter((id) => editing || cards[id]);
+  const cols = packRows(shown.map((id) => CARDS[id].span));
 
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
-      {visible.map((id, index) => {
+      {shown.map((id, index) => {
         const content = cards[id];
-        if (!content && !editing) return null;
         return (
           <div
             key={id}
             className={cx(
-              "relative",
-              SPAN_CLASS[CARDS[id].span],
+              // grid: o card ocupa a altura da linha inteira, alinhado com os vizinhos
+              "relative grid [&>*:first-child]:content-start",
+              COL_CLASS[cols[index]],
               editing && "rounded-card outline-2 outline-offset-4 outline-border outline-dashed",
               dragging === id && "opacity-50",
             )}
@@ -174,7 +199,7 @@ export function PanelGrid({
                 </IconButton>
                 <IconButton
                   label={`Descer ${CARDS[id].title}`}
-                  disabled={index === visible.length - 1}
+                  disabled={index === shown.length - 1}
                   onClick={() => layout.move(id, 1)}
                 >
                   <ChevronDown />

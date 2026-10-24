@@ -13,6 +13,8 @@ export type Summary = {
   cycle: CycleInfo;
   /** A conta do ciclo: começou com + entrou − gastos − faturas − guardado = terminou com */
   flow: CycleFlow;
+  /** Avisos para ler o resultado do ciclo (analytics.cycle_notes) */
+  notes: CycleNote[];
   previous_result: number;
   projected_expense: number | null;
   liquid_balance: number;
@@ -24,8 +26,18 @@ export type Summary = {
   avg_monthly_expense: number;
   emergency_reserve_months: number | null;
   fixed_monthly: number;
+  /** Soma das parcelas em andamento (compromisso de todo ciclo, como os fixos) */
+  installments_monthly: number;
+  /** (fixos + parcelas) ÷ renda média */
   fixed_commitment: number | null;
-  health: { score: number; savings_points: number; reserve_points: number; commitment_points: number };
+  health: {
+    score: number;
+    /** Taxa de poupança dos 3 últimos ciclos fechados, a usada no score */
+    savings_rate: number | null;
+    savings_points: number;
+    reserve_points: number;
+    commitment_points: number;
+  };
 };
 export type CycleFlow = {
   started_with: number;
@@ -40,6 +52,18 @@ export type CycleFlow = {
   /** Só em ciclos encerrados: o "terminou com" contra o saldo real do fim do ciclo */
   check: { balance: number; unpaid_bills: number; free: number; difference: number } | null;
 };
+export type CycleNote =
+  | {
+      /** Algo de todo ciclo caiu no ciclo seguinte (shifted_out) ou duas vezes neste (doubled) */
+      kind: "shifted_out" | "doubled";
+      income: boolean;
+      label: string;
+      category_name: string;
+      amount: number;
+      dates: string[];
+    }
+  | { kind: "bills_after"; amount: number; bills: { bank: string; amount: number; due_date: string }[] }
+  | { kind: "withdrew"; amount: number };
 export type CategoryRow = {
   category_id: number | null;
   category_name: string;
@@ -89,21 +113,40 @@ export type Forecast = {
     counted: boolean;
   }[];
   income_left: number;
+  /** O que entra no ciclo: o que já entrou + o previsto (base da meta em %) */
+  cycle_income: number;
   tithe: { rate: number; base: number; given: number; left: number };
-  savings: { goal: number; saved: number; left: number };
-  fixed: { name: string; amount: number }[];
+  /** Meta de guardar no ciclo: % do que entra ou valor fixo; `saved` = já guardado no ciclo */
+  savings: {
+    mode: "rate" | "amount";
+    rate: number;
+    goal: number;
+    saved: number;
+    left: number;
+    /** Quanto foi guardado nos 3 últimos ciclos fechados (referência) */
+    history_rate: number | null;
+  };
+  fixed: { name: string; amount: number; expected_date: string | null }[];
   fixed_left: number;
+  /** Parcelas que ainda vão entrar na fatura deste ciclo */
+  installments: { name: string; amount: number }[];
+  installments_left: number;
   daily_typical: number;
   variable_left: number;
-  /** Total para o dia a dia até o fim do ciclo (daily_allowance = spendable ÷ dias) */
+  /** Total para o dia a dia até o fim do ciclo, já cumprindo a meta (daily_allowance = ÷ dias) */
   spendable: number;
   daily_allowance: number | null;
+  /** No seu ritmo: o que sobra além da meta (negativo = o ritmo come parte da meta) */
   forecast_end: number;
+  /** O dinheiro de agora até a próxima entrada, já tirando as contas que vencem antes dela */
+  until_income: { label: string; date: string; days: number; fixed_before: number; free: number; daily: number } | null;
 };
 
 /** GET/PUT /planning */
 export type Planning = {
   tithe_rate: number;
+  savings_mode: "rate" | "amount";
+  savings_rate: number;
   savings_goal: number;
   incomes: Record<string, { until: string | null; ignore: boolean }>;
 };

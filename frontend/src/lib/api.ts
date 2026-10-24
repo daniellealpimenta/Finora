@@ -114,6 +114,61 @@ export type SavingsPot = {
   investments: number;
 };
 
+export type WishStatus = "WANTED" | "BOUGHT" | "DROPPED";
+
+/** Desejo da lista (GET /wishlist). Valores em string (Decimal). */
+export type WishItem = {
+  id: number;
+  group_id: number | null;
+  name: string;
+  url: string | null;
+  price: string;
+  store: string | null;
+  image_url: string | null;
+  notes: string | null;
+  /** 1 alta, 2 média, 3 baixa */
+  priority: 1 | 2 | 3;
+  status: WishStatus;
+  target_price: string | null;
+  bought_at: string | null;
+  last_checked_at: string | null;
+  /** Preço quando foi adicionado e o menor já visto */
+  first_price: string;
+  lowest_price: string;
+  created_at: string;
+};
+
+export type WishGroup = {
+  id: number;
+  name: string;
+  pot_id: number | null;
+  pot_name: string | null;
+  /** Saldo do cofrinho ligado: quanto já foi guardado para o grupo */
+  pot_balance: string | null;
+  total: string;
+  count: number;
+};
+
+export type Wishlist = {
+  groups: WishGroup[];
+  items: WishItem[];
+  /** Só o que ainda é desejado */
+  total: string;
+  count: number;
+  ungrouped_total: string;
+  bought_total: string;
+};
+
+/** POST /wishlist/preview: o que deu para ler da página do produto */
+export type ProductPreview = {
+  url: string;
+  name: string | null;
+  price: string | null;
+  currency: string;
+  image_url: string | null;
+  store: string | null;
+};
+
 export type BillStatus = "open" | "closed" | "overdue" | "paid";
 
 /** Fatura de cartão: a aberta (calculada) ou uma fechada da Pluggy. */
@@ -217,3 +272,91 @@ export type TransactionPage = {
   income: string;
   expense: string;
 };
+
+/** GET /pots/{id}/yields: média por dia útil e o rendimento de cada intervalo entre registros */
+export type PotYields = {
+  average_per_business_day: number;
+  tracking_since: string | null;
+  daily: { day: string; since: string; days: number; business_days: number; earned: number }[];
+};
+
+/** GET /transactions/by-category: gasto por categoria com os filtros da lista */
+export type CategorySpend = { category_id: number | null; category_name: string; spent: number; count: number };
+
+// --- assistente (backend/app/api/routes/assistant.py) ------------------------
+
+export type AssistantModel = {
+  name: string;
+  label: string;
+  size_gb: number;
+  memory_gb: number;
+  note: string;
+  installed: boolean;
+};
+
+export type PullStatus = {
+  model: string | null;
+  running: boolean;
+  status: string;
+  /** Bytes: soma das camadas do modelo */
+  total: number;
+  completed: number;
+  error: string | null;
+};
+
+export type AssistantStatus = {
+  /** Ollama rodando nesta máquina */
+  ollama: boolean;
+  models: AssistantModel[];
+  active_model: string;
+  pull: PullStatus;
+};
+
+export type Insight = {
+  kind: string;
+  severity: "warn" | "info" | "good";
+  title: string;
+  detail: string;
+};
+
+export type ChatMessage = { role: "user" | "assistant"; content: string };
+
+export type ChatEvent =
+  | { type: "tool"; name: string; label: string }
+  | { type: "text"; delta: string }
+  | { type: "error"; message: string }
+  | { type: "done" };
+
+/** POST /assistant/chat: lê a resposta em SSE e chama `onEvent` a cada pedaço. */
+export async function streamChat(
+  messages: ChatMessage[],
+  onEvent: (event: ChatEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(`${API_URL}/assistant/chat`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ messages }),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, typeof body.detail === "string" ? body.detail : res.statusText);
+  }
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += value;
+    let end;
+    while ((end = buffer.indexOf("\n\n")) >= 0) {
+      const chunk = buffer.slice(0, end);
+      buffer = buffer.slice(end + 2);
+      if (chunk.startsWith("data: ")) onEvent(JSON.parse(chunk.slice(6)) as ChatEvent);
+    }
+  }
+}

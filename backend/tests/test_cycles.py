@@ -155,3 +155,22 @@ def test_bill_paid_before_closing_keeps_cycles_chained(db):
 
     assert september["check"]["difference"] == 0
     assert october["started_with"] == september["ended_with"]
+
+
+def test_start_day_chosen_by_user_overrides_card_closing(client, db, auth_headers):
+    _setup(db)
+    resp = client.put("/dashboard/cycle", json={"start_day": 11}, headers=auth_headers)
+    assert resp.status_code == 200 and resp.json()["start_day"] == 11
+
+    cyc = cycles.load(db)
+    assert cyc.bounds("2026-09") == (date(2026, 9, 11), date(2026, 10, 11))
+    assert cyc.key_of(date(2026, 10, 10)) == "2026-09"
+    assert cyc.key_of(date(2026, 10, 11)) == "2026-10"
+    # A fatura do PicPay (fecha 08/10) continua no ciclo em que fecha
+    flow = analytics.summary(db, "2026-09", TODAY)["flow"]
+    assert flow["card_bills"] == Decimal("500") and flow["check"]["difference"] == 0
+
+    client.put("/dashboard/cycle", json={"start_day": None}, headers=auth_headers)
+    assert cycles.load(db).bounds("2026-09") == (date(2026, 9, 9), date(2026, 10, 9))
+    invalid = client.put("/dashboard/cycle", json={"start_day": 31}, headers=auth_headers)
+    assert invalid.status_code == 422

@@ -212,7 +212,9 @@ def card_overview(
         # Fechamento: o escolhido pelo usuário ou o estimado pelas faturas
         "closing_day": account.closing_day,
         "estimated_closing_day": estimated_day,
-        "is_cycle_reference": cyc.reference is not None and cyc.reference.account_id == account.id,
+        "is_cycle_reference": cyc.start_day is None
+        and cyc.reference is not None
+        and cyc.reference.account_id == account.id,
         # Mais recente primeiro: a aberta, depois as fechadas
         "bills": list(reversed(bills)),
     }

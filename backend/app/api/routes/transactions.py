@@ -92,17 +92,12 @@ def list_categories(_: CurrentUser, db: DbSession) -> list[Category]:
     return list(db.scalars(select(Category).order_by(Category.kind, Category.name)))
 
 
-@router.get("/transactions", response_model=TransactionPage)
-def list_transactions(
-    _: CurrentUser,
-    db: DbSession,
-    month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
-    account_id: int | None = None,
-    category_id: int | None = None,
-    q: str | None = None,
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=50, ge=1, le=200),
-) -> TransactionPage:
+Month = Query(default=None, pattern=r"^\d{4}-\d{2}$")
+
+
+def _filters(
+    db: DbSession, month: str | None, account_id: int | None, category_id: int | None, q: str | None
+) -> list:
     filters = []
     if month:
         # Ciclo da fatura: compras no cartão vão para o ciclo em que a fatura delas fecha
@@ -114,6 +109,62 @@ def list_transactions(
     if q:
         like = f"%{q}%"
         filters.append(or_(Transaction.description.ilike(like), Transaction.merchant.ilike(like)))
+    return filters
+
+
+class CategorySpend(BaseModel):
+    category_id: int | None
+    category_name: str
+    # Gasto líquido (estornos abatem), positivo; float para o front somar direto
+    spent: float
+    count: int
+
+
+@router.get("/transactions/by-category", response_model=list[CategorySpend])
+def spend_by_category(
+    _: CurrentUser,
+    db: DbSession,
+    month: str | None = Month,
+    account_id: int | None = None,
+    q: str | None = None,
+) -> list[CategorySpend]:
+    """Gasto por categoria com os mesmos filtros da lista (ciclo ou todos, conta, busca): os
+    cards de categoria da tela de transações. Sem filtro de categoria, para os cards ficarem."""
+    expense = or_(
+        Category.kind == CategoryKind.EXPENSE,
+        (Category.kind.is_(None)) & (Transaction.amount < 0),
+    )
+    rows = db.execute(
+        select(
+            Transaction.category_id,
+            func.coalesce(Category.name, "Sem categoria"),
+            -func.sum(Transaction.amount),
+            func.count(Transaction.id),
+        )
+        .join(Category, Transaction.category_id == Category.id, isouter=True)
+        .where(*_filters(db, month, account_id, None, q), expense)
+        .group_by(Transaction.category_id, Category.name)
+    )
+    out = [
+        CategorySpend(category_id=cid, category_name=name, spent=float(spent), count=count)
+        for cid, name, spent, count in rows
+        if spent and spent > 0
+    ]
+    return sorted(out, key=lambda c: c.spent, reverse=True)
+
+
+@router.get("/transactions", response_model=TransactionPage)
+def list_transactions(
+    _: CurrentUser,
+    db: DbSession,
+    month: str | None = Month,
+    account_id: int | None = None,
+    category_id: int | None = None,
+    q: str | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+) -> TransactionPage:
+    filters = _filters(db, month, account_id, category_id, q)
 
     total = db.scalar(select(func.count(Transaction.id)).where(*filters)) or 0
     sums = db.execute(

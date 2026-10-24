@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  CalendarRange,
   CreditCard,
   FileUp,
   FlaskConical,
@@ -40,6 +41,7 @@ import {
   type Investment,
   type SyncStatus,
 } from "@/lib/api";
+import { cycleRange, type CycleInfo } from "@/lib/cycle";
 import { ACCOUNT_TYPE_LABEL, dateTime, money, percent, shortDate } from "@/lib/format";
 import { FULL, gsap, motion, useGSAP, usePageEnter } from "@/lib/motion";
 import { notify, setSyncing } from "@/lib/signals";
@@ -76,6 +78,7 @@ export default function ContasPage() {
   const [connecting, setConnecting] = useState(false);
   const [removing, setRemoving] = useState<Connection | null>(null);
   const [cards, setCards] = useState<Map<number, CreditCardInfo>>(new Map());
+  const [cycle, setCycle] = useState<CycleInfo | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const syncIcon = useRef<HTMLSpanElement>(null);
@@ -83,13 +86,15 @@ export default function ContasPage() {
   usePageEnter(root, connections !== null);
 
   const load = useCallback(async () => {
-    const [conns, accounts, status, inv, cardList] = await Promise.all([
+    const [conns, accounts, status, inv, cardList, cycleInfo] = await Promise.all([
       api<Connection[]>("/connections"),
       api<Account[]>("/accounts"),
       api<SyncStatus>("/sync/status"),
       api<Investment[]>("/investments"),
       api<CreditCardInfo[]>("/cards"),
+      api<CycleInfo>("/dashboard/cycle"),
     ]);
+    setCycle(cycleInfo);
     setCards(new Map(cardList.map((c) => [c.account_id, c])));
     setConnections(conns);
     setInvestments(inv);
@@ -107,6 +112,16 @@ export default function ContasPage() {
       await api(`/accounts/${account.id}`, { method: "PATCH", body: JSON.stringify({ closing_day: day }) });
       await load();
       notify(day === null ? "Fechamento volta a ser estimado pelas faturas." : `Fechamento no dia ${day} salvo.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function saveCycleStart(day: number | null) {
+    try {
+      await api("/dashboard/cycle", { method: "PUT", body: JSON.stringify({ start_day: day }) });
+      await load();
+      notify(day === null ? "Os ciclos voltam a seguir a fatura do cartão." : `Ciclos começando no dia ${day}.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -265,6 +280,8 @@ export default function ContasPage() {
             <Total icon={CreditCard} color="var(--cat-move)" label="Faturas" value={-sumOf(["CREDIT_CARD"])} />
           </div>
         )}
+
+        {cycle && <CycleStart cycle={cycle} onSave={saveCycleStart} />}
 
         {connections && connections.length === 0 && manual.length === 0 && (
           <Card data-enter>
@@ -450,6 +467,96 @@ function AccountList({
         );
       })}
     </ul>
+  );
+}
+
+/** Dia em que os ciclos começam: o escolhido pelo usuário ou o fechamento do cartão principal. */
+function CycleStart({ cycle, onSave }: { cycle: CycleInfo; onSave: (day: number | null) => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const day = cycle.start_day;
+
+  return (
+    <Card data-enter className="grid gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <IconBadge icon={CalendarRange} color="var(--cat-fin)" />
+        <div className="min-w-0 flex-1">
+          <h2 className="font-semibold">Ciclo</h2>
+          <p className="text-xs text-muted">
+            {day
+              ? `Do dia ${day} até o dia ${day === 1 ? "último" : day - 1} do mês seguinte, escolhido por você.`
+              : cycle.reference_card
+                ? `Segue o fechamento da fatura do ${cycle.reference_card}.`
+                : "Mês do calendário (nenhum cartão com faturas ainda)."}{" "}
+            Ciclo atual: {cycleRange(cycle)}.
+          </p>
+        </div>
+        {!editing && (
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setDraft(day ? String(day) : "");
+              setEditing(true);
+            }}
+          >
+            {day ? "Mudar o dia" : "Escolher um dia"}
+          </Button>
+        )}
+      </div>
+      {editing && (
+        <form
+          className="flex flex-wrap items-center gap-2 pl-12"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const value = Number(draft);
+            if (!Number.isInteger(value) || value < 1 || value > 28) {
+              setError("Use um dia entre 1 e 28 (todo mês tem esse dia).");
+              return;
+            }
+            await onSave(value);
+            setError(null);
+            setEditing(false);
+          }}
+        >
+          <label htmlFor="cycle-start" className="text-sm text-muted">
+            Começa no dia
+          </label>
+          <input
+            id="cycle-start"
+            autoFocus
+            inputMode="numeric"
+            className={cx(inputClass, "min-h-9 w-20 text-right tabular")}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <Button type="submit" variant="primary" className="min-h-9">
+            Salvar
+          </Button>
+          {day !== null && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="min-h-9"
+              onClick={async () => {
+                await onSave(null);
+                setEditing(false);
+              }}
+            >
+              Seguir a fatura do cartão
+            </Button>
+          )}
+          <Button type="button" variant="ghost" className="min-h-9" onClick={() => setEditing(false)}>
+            Cancelar
+          </Button>
+          <p className="w-full text-xs text-muted">
+            Escolha o dia seguinte ao que você costuma pagar as contas. Muda a divisão de todos os ciclos, inclusive os
+            passados; as compras no cartão continuam no ciclo em que a fatura fecha.
+          </p>
+          {error && <p className="w-full text-xs font-semibold text-negative">{error}</p>}
+        </form>
+      )}
+    </Card>
   );
 }
 

@@ -9,6 +9,7 @@ import {
   CreditCard,
   Gauge,
   Heart,
+  Info,
   PiggyBank,
   Repeat,
   Shield,
@@ -64,7 +65,7 @@ import {
   INFO_RESERVE,
   INFO_SAVINGS,
 } from "./info";
-import type { CategoryRow, Data, Summary } from "./types";
+import type { CategoryRow, CycleNote, Data, Summary } from "./types";
 
 // Limites iguais aos do score do backend (app/services/analytics.py::_health_score)
 const RESERVE_GOAL_MONTHS = 6;
@@ -309,20 +310,30 @@ export function ReserveCard({ months, avg }: { months: number | null; avg: numbe
         </div>
       </div>
       <p className="text-[13px] leading-normal text-muted">
-        Quanto tempo o saldo em conta mais os cofrinhos cobrem o seu gasto médio ({money(avg)} por ciclo) se a renda parar.
+        Quanto tempo o saldo em conta (sem o que já é das faturas) mais os cofrinhos cobrem o seu gasto médio (
+        {money(avg)} por ciclo) se a renda parar.
       </p>
     </Card>
   );
 }
 
-export function FixedCard({ commitment, monthly }: { commitment: number | null; monthly: number }) {
+export function FixedCard({
+  commitment,
+  monthly,
+  installments,
+}: {
+  commitment: number | null;
+  monthly: number;
+  installments: number;
+}) {
+  const total = monthly + installments;
   const status: Status | null =
     commitment === null ? null : commitment <= FIXED_IDEAL ? "ok" : commitment <= 0.5 ? "warn" : "bad";
   return (
     <Card data-enter className="grid content-start gap-4">
       <IndexHeader icon={Repeat} color="var(--cat-move)" title="Gastos fixos" status={status} info={INFO_FIXED} />
       <p className="text-[28px] leading-tight font-light tracking-[-0.02em] tabular">
-        {commitment === null ? money(monthly) : percent(commitment)}
+        {commitment === null ? money(total) : percent(commitment)}
         <span className="text-sm font-medium tracking-normal text-muted">
           {commitment === null ? " por ciclo" : " da renda"}
         </span>
@@ -340,7 +351,8 @@ export function FixedCard({ commitment, monthly }: { commitment: number | null; 
         </div>
       </div>
       <p className="text-[13px] leading-normal text-muted">
-        Assinaturas e contas recorrentes somam {money(monthly)} por ciclo.
+        Assinaturas e contas recorrentes somam {money(monthly)} por ciclo
+        {installments > 0 ? <>, e as parcelas, mais {money(installments)}.</> : "."}
         {commitment === null && " Sem receita no período para comparar."}
       </p>
     </Card>
@@ -613,6 +625,7 @@ export function HeroCard({ data, keyById }: { data: Data; keyById: Map<number, C
         ) : (
           <CycleResult summary={s} />
         )}
+        <CycleNotes summary={s} />
         <p className="max-w-[52ch] text-base leading-relaxed">
           {isCurrent ? <CashStory data={data} /> : <Story data={data} keyById={keyById} />}
         </p>
@@ -755,12 +768,15 @@ function CheckNote({ check }: { check: NonNullable<Summary["flow"]["check"]> }) 
   );
 }
 
-/** Ciclo encerrado: o que o ciclo sozinho fez com o dinheiro, sem misturar com o que já havia. */
+/** Ciclo encerrado: o que o ciclo sozinho fez com o dinheiro, sem misturar com o que já havia.
+ * O que foi para os cofrinhos sai da conta, mas continua sendo do usuário: o texto mostra os dois. */
 function CycleResult({ summary: s }: { summary: Summary }) {
   const f = s.flow;
   const prev = cycleName(shiftMonth(s.cycle.key, -1));
   const result = Number(f.result);
   const started = Number(f.started_with);
+  const saved = Number(f.saved);
+  const withoutSaving = result + saved;
   return (
     <div className="grid gap-1.5 rounded-control border border-border p-3.5">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
@@ -771,24 +787,113 @@ function CycleResult({ summary: s }: { summary: Summary }) {
         </Mark>
       </div>
       <p className="text-xs leading-relaxed text-muted tabular">
+        De {cycleRange(s.cycle)}{" "}
         {result >= 0 ? (
-          <>
-            De {cycleRange(s.cycle)} entrou mais do que saiu: sobraram {money(result)}, que se somaram aos{" "}
-            {money(started)} que você já tinha do ciclo de {prev}.
-          </>
-        ) : started > 0 ? (
-          <>
-            De {cycleRange(s.cycle)} saiu {money(-result)} a mais do que entrou. Esse valor veio dos {money(started)} que
-            tinham sobrado do ciclo de {prev}, por isso o ciclo terminou com {money(f.ended_with)}.
-          </>
+          <>entrou mais do que saiu: sobraram {money(result)}.</>
         ) : (
+          <>saiu {money(-result)} a mais do que entrou.</>
+        )}
+        {saved >= 0.01 &&
+          (result >= 0 ? (
+            <> E isso já depois de guardar {money(saved)} nos cofrinhos.</>
+          ) : (
+            <>
+              {" "}Mas {money(saved)} dessas saídas foram para os cofrinhos, e esse dinheiro continua seu. Sem
+              contar o que você guardou,{" "}
+              <strong className="font-semibold text-foreground">
+                {withoutSaving >= 0 ? `sobraram ${money(withoutSaving)}` : `faltaram ${money(-withoutSaving)}`}
+              </strong>
+              .
+            </>
+          ))}
+        {Math.abs(started) >= 0.01 && (
           <>
-            De {cycleRange(s.cycle)} saiu {money(-result)} a mais do que entrou.
+            {" "}Você começou o ciclo com {money(started)} (o que sobrou até {prev}) e terminou com{" "}
+            {money(f.ended_with)} livres.
           </>
         )}
       </p>
     </div>
   );
+}
+
+/** Avisos que mudam a leitura do resultado: algo de todo ciclo que caiu na virada, faturas pagas
+ * no ciclo seguinte, resgates dos cofrinhos (analytics.cycle_notes). */
+function CycleNotes({ summary: s }: { summary: Summary }) {
+  if (!s.notes?.length) return null;
+  return (
+    <div className="grid gap-1.5">
+      <p className="label uppercase">Para entender este resultado</p>
+      <ul className="grid gap-1.5">
+        {s.notes.map((n, i) => {
+          const warn = n.kind === "shifted_out" || n.kind === "doubled";
+          return (
+            <li
+              key={i}
+              style={warn ? tone("var(--warning)") : undefined}
+              className={cx(
+                "flex items-start gap-2 rounded-control px-3 py-2 text-xs leading-relaxed",
+                warn ? "tint" : "border border-border text-muted",
+              )}
+            >
+              {warn ? (
+                <StatusShape status="warn" className="mt-0.5" />
+              ) : (
+                <Info aria-hidden className="mt-px size-3.5 shrink-0" />
+              )}
+              <span className="tabular">{noteText(n, s)}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function noteText(n: CycleNote, s: Summary): ReactNode {
+  const next = cycleName(shiftMonth(s.cycle.key, 1));
+  const prev = cycleName(shiftMonth(s.cycle.key, -1));
+  switch (n.kind) {
+    case "shifted_out": {
+      const [better, worse] = n.income ? ["pior", "melhor"] : ["melhor", "pior"];
+      return (
+        <>
+          <strong className="font-semibold">{n.category_name}</strong> ({n.label}): os {money(n.amount)} que caem todo
+          ciclo não caíram neste. Caíram em {shortDate(n.dates[0])}, já no ciclo de {next}. Por isso este ciclo parece{" "}
+          {money(n.amount)} {better}, e o de {next}, {worse}.
+        </>
+      );
+    }
+    case "doubled":
+      return (
+        <>
+          <strong className="font-semibold">{n.category_name}</strong> ({n.label}): {money(n.amount)} caiu duas vezes
+          neste ciclo ({n.dates.map(shortDate).join(" e ")}) e nenhuma no de {prev}. Um deles deve ser do ciclo de{" "}
+          {prev}: sem ele, o resultado seria {money(n.amount)} {n.income ? "menor" : "melhor"}.
+        </>
+      );
+    case "bills_after":
+      return (
+        <>
+          {n.bills.map((b) => `${b.bank} ${money(b.amount)} (vence ${shortDate(b.due_date)})`).join(", ")}:{" "}
+          {n.bills.length > 1 ? "essas faturas fecharam" : "essa fatura fechou"} neste ciclo e{" "}
+          {n.bills.length > 1 ? "vencem" : "vence"} já no seguinte, mas o valor está descontado aqui.
+          {s.flow.check && (
+            <>
+              {" "}Por isso, no fim do ciclo, o banco mostrava {money(s.flow.check.balance)} em conta, mas só{" "}
+              {money(s.flow.check.free)} estavam livres.
+            </>
+          )}
+        </>
+      );
+    case "withdrew":
+      return (
+        <>
+          Você resgatou {money(n.amount)} dos cofrinhos a mais do que guardou. O resgate entrou como dinheiro do ciclo e
+          ajudou no resultado.
+        </>
+      );
+  }
 }
 
 /** Ciclo atual: como fechou o ciclo anterior e o que já entrou e saiu neste. */
@@ -1014,16 +1119,65 @@ export function InstallmentsCard({ items, keyById }: { items: Installment[]; key
 
 // --- Cards simples (antes direto na página) --------------------------------------------
 
+/**
+ * Ritmo: quanto já foi gasto no ciclo contra o ciclo anterior no mesmo dia do ciclo. Os
+ * números vêm primeiro (é a resposta); o gráfico mostra o caminho até eles.
+ */
 export function PaceCard({ data }: { data: Data }) {
+  const s = data.summary;
+  const points = data.daily;
+  const filled = points.filter((p) => p.current !== null);
+  const last = filled[filled.length - 1];
+  if (!last) return null;
+  const day = last.day;
+  const spent = Number(last.current);
+  const prevSame = last.previous === null ? null : Number(last.previous);
+  const prevTotal = Number([...points].reverse().find((p) => p.previous !== null)?.previous ?? 0);
+  const diff = prevSame === null ? null : spent - prevSame;
+  const faster = diff !== null && diff > 0;
+  const projected = s.projected_expense === null ? null : Number(s.projected_expense);
+  const isCurrent = s.cycle.is_current;
+
   return (
     <Card data-enter>
-      <CardTitle icon={Gauge} color="var(--cat-move)" hint="gasto acumulado no ciclo" info={INFO_PACE}>
+      <CardTitle icon={Gauge} color="var(--cat-move)" hint={isCurrent ? `dia ${day} de ${points.length}` : "ciclo inteiro"} info={INFO_PACE}>
         Ritmo de gastos
       </CardTitle>
-      <div className="mb-3">
+      <div className="mb-4 grid grid-cols-2 gap-x-4 gap-y-3">
+        <div className="grid gap-0.5">
+          <span className="label">{isCurrent ? "Gasto até hoje" : "Gasto no ciclo"}</span>
+          <span className="text-[26px] leading-tight font-light tracking-[-0.02em] tabular">{money(spent)}</span>
+          <span className="text-xs text-muted tabular">{money(spent / Math.max(day, 1))} por dia</span>
+        </div>
+        <div className="grid gap-0.5">
+          <span className="label">{isCurrent ? `Ciclo anterior no dia ${day}` : "Ciclo anterior"}</span>
+          <span className="text-[26px] leading-tight font-light tracking-[-0.02em] text-muted tabular">
+            {prevSame === null ? "—" : money(isCurrent ? prevSame : prevTotal)}
+          </span>
+          <span className="text-xs text-muted tabular">
+            {isCurrent && prevTotal > 0 ? `fechou em ${money(prevTotal)}` : " "}
+          </span>
+        </div>
+      </div>
+      {diff !== null && Math.abs(diff) >= 1 && (
+        <p
+          style={tone(faster ? "var(--warning)" : "var(--positive)")}
+          className="tint mb-4 flex items-start gap-2 rounded-control px-3 py-2 text-sm leading-relaxed"
+        >
+          <StatusShape status={faster ? "warn" : "ok"} className="mt-1" />
+          <span>
+            {money(Math.abs(diff))} {faster ? "a mais" : "a menos"} que o ciclo anterior
+            {isCurrent ? " no mesmo ponto" : ""}.
+            {isCurrent && projected !== null && (
+              <> No ritmo atual, o ciclo fecha perto de {money(projected)}.</>
+            )}
+          </span>
+        </p>
+      )}
+      <div className="mb-2">
         <Legend series={DAILY_SERIES} />
       </div>
-      <DailyChart data={data.daily} />
+      <DailyChart data={points} today={isCurrent ? day : undefined} />
     </Card>
   );
 }

@@ -21,6 +21,12 @@ export const moneyCompact = (v: string | number | null | undefined) => {
   const n = finite(v);
   return n === null ? "—" : brlCompact.format(n);
 };
+/** "1.234,56" ou "1234.56" -> número; vazio -> null; inválido -> NaN. */
+export function parseMoney(raw: string): number | null {
+  const clean = raw.replace(/\s|R\$/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
+  return clean === "" ? null : Number(clean);
+}
+
 export const percent = (v: number) => (Number.isFinite(v) ? pct.format(v) : "—");
 
 const pctFine = new Intl.NumberFormat("pt-BR", { style: "percent", minimumFractionDigits: 2, maximumFractionDigits: 2 });

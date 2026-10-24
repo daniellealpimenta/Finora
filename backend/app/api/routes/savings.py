@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession
 from app.db.models import Investment, SavingsPot
+from app.services import yields
 
 router = APIRouter(tags=["cofrinhos"])
 
@@ -119,6 +120,29 @@ def move_investment(
     item.pot = _get_pot(db, body.pot_id) if body.pot_id is not None else None
     db.commit()
     return _investment_out(item)
+
+
+class DailyYield(BaseModel):
+    day: date
+    # Registro anterior: o rendimento é do intervalo (since, day]
+    since: date
+    days: int
+    business_days: int
+    earned: Decimal
+
+
+class PotYieldsOut(BaseModel):
+    # Média desde cada aplicação: quanto o cofrinho rende num dia útil, hoje
+    average_per_business_day: Decimal
+    # Primeiro saldo registrado; o dia a dia começa a partir dele
+    tracking_since: date | None
+    daily: list[DailyYield]
+
+
+@router.get("/pots/{pot_id}/yields", response_model=PotYieldsOut)
+def pot_yields(pot_id: int, _: CurrentUser, db: DbSession) -> PotYieldsOut:
+    """Rendimento por dia útil (média) e dia a dia (pelos saldos gravados em cada sync)."""
+    return PotYieldsOut(**yields.pot_yields(_get_pot(db, pot_id), date.today()))
 
 
 @router.get("/pots", response_model=list[PotOut])
