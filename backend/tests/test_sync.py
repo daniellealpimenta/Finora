@@ -311,7 +311,7 @@ CAIXINHA = {
 def test_sync_brings_cofrinhos_and_card_bill_dates(db, connection, monkeypatch):
     card = {
         **CARD,
-        "number": "5502 **** **** 0023",
+        "number": "1234 **** **** 4321",
         "creditData": {
             "brand": "MASTERCARD",
             "level": "PLATINUM",
@@ -347,7 +347,7 @@ def test_sync_brings_cofrinhos_and_card_bill_dates(db, connection, monkeypatch):
     assert (card_account.card_brand, card_account.card_level, card_account.card_number) == (
         "MASTERCARD",
         "PLATINUM",
-        "0023",
+        "4321",
     )
     assert card_account.available_credit_limit == Decimal("4200")
     assert card_account.installments_limit_used == Decimal("300")

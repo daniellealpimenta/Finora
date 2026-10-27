@@ -31,13 +31,13 @@ def test_bills_status_open_bill_and_limit(db):
         connection_id=conn.id,
         name="PIC PAY MASTERCARD PLATINUM",
         type=AccountType.CREDIT_CARD,
-        balance=Decimal("-2473"),
+        balance=Decimal("-2500"),
         credit_limit=Decimal("10000"),
-        available_credit_limit=Decimal("7527"),
-        installments_limit_used=Decimal("1917.63"),
+        available_credit_limit=Decimal("7500"),
+        installments_limit_used=Decimal("1800"),
         card_brand="MASTERCARD",
         card_level="PLATINUM",
-        card_number="0023",
+        card_number="4321",
     )
     db.add_all([checking, card])
     db.flush()
@@ -89,8 +89,8 @@ def test_bills_status_open_bill_and_limit(db):
 
     [c] = cards(db, TODAY)
 
-    assert (c["bank"], c["brand"], c["number"]) == ("PicPay", "MASTERCARD", "0023")
-    assert (c["used"], c["installments_used"]) == (Decimal("2473"), Decimal("1917.63"))
+    assert (c["bank"], c["brand"], c["number"]) == ("PicPay", "MASTERCARD", "4321")
+    assert (c["used"], c["installments_used"]) == (Decimal("2500"), Decimal("1800"))
     open_bill, october, september = c["bills"]
     assert open_bill["status"] == "open" and open_bill["amount"] == Decimal("541.43")
     # Fecha em 08/11: é a fatura do ciclo de outubro (09/10 a 08/11)

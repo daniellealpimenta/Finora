@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 -4 120 124" role="img" aria-label="Pila, o porquinho do ManagerFinance">
+  <ellipse cx="60" cy="112" rx="32" ry="4.5" fill="#000" opacity="0.16"/>
+  <g>
+    <rect x="34" y="90" width="17" height="19" rx="7" fill="#e06f9f"/>
+    <rect x="69" y="90" width="17" height="19" rx="7" fill="#e06f9f"/>
+    <path d="M26 42Q19 26 25 19Q31 14 52 30z" fill="#e06f9f"/>
+    <path d="M94 42Q101 26 95 19Q89 14 68 30z" fill="#e06f9f"/>
+    <ellipse cx="60" cy="63" rx="42" ry="39" fill="#f28ab5"/>
+    <ellipse cx="44" cy="40" rx="15" ry="8" fill="#f9b6d2" opacity="0.55" transform="rotate(-18 44 40)"/>
+    <rect x="49" y="27" width="22" height="5" rx="2.5" fill="#8f2f5a"/>
+    <ellipse cx="30" cy="74" rx="7" ry="4.5" fill="#e0567f" opacity="0.5"/>
+    <ellipse cx="90" cy="74" rx="7" ry="4.5" fill="#e0567f" opacity="0.5"/>
+    <path d="M37 58q6-8 12 0M71 58q6-8 12 0" stroke="#3a1426" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <ellipse cx="60" cy="73" rx="15" ry="11" fill="#f9b6d2"/>
+    <ellipse cx="54.5" cy="73" rx="2.6" ry="3.8" fill="#8f2f5a"/>
+    <ellipse cx="65.5" cy="73" rx="2.6" ry="3.8" fill="#8f2f5a"/>
+    <path d="M45 87q15 20 30 0z" fill="#3a1426"/>
+    <path d="M51 94q9 6 18 0q-9-4-18 0z" fill="#e0567f"/>
+    <path d="M14 30l3-7l3 7l7 3l-7 3l-3 7l-3-7l-7-3zM100 12l2-5l2 5l5 2l-5 2l-2 5l-2-5l-5-2z" fill="#d2ac6a"/>
+  </g>
+  <g>
+    <circle cx="60" cy="10" r="8" fill="#d2ac6a" stroke="#6b5221" stroke-width="2.5">
+      <animate attributeName="cy" values="-6;24;24" keyTimes="0;0.35;1" dur="3s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.33;0.38;1" dur="3s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+</svg>
