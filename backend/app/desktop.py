@@ -1,7 +1,7 @@
-"""Lançador do programa para Windows (ManagerFinance.exe).
+"""Lançador do programa (Finora.exe no Windows, Finora.app no macOS).
 
-Sobe a API + o frontend estático num processo só e abre uma janela nativa (WebView2).
-No modo web (uvicorn + npm run dev) este arquivo não é usado.
+Sobe a API + o frontend estático num processo só e abre uma janela nativa (WebView2 no
+Windows, WebKit no macOS). No modo web (uvicorn + npm run dev) este arquivo não é usado.
 """
 
 import logging
@@ -14,14 +14,15 @@ from pathlib import Path
 
 from app.core.config import DATA_DIR
 
-PORT = 8765  # o frontend é gerado com esta porta (scripts/build-desktop.ps1)
+PORT = 8765  # o frontend é gerado com esta porta (scripts/build-desktop.ps1 e .sh)
 URL = f"http://127.0.0.1:{PORT}"
 
 logger = logging.getLogger("desktop")
 
 
 def _redirect_output() -> None:
-    """No .exe sem console, stdout/stderr são None e o logging do uvicorn quebraria."""
+    """Sem console (.exe) stdout/stderr são None e o logging do uvicorn quebraria; no .app
+    a saída se perderia. Vai tudo para o arquivo de log."""
     log_dir = DATA_DIR / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log = open(log_dir / "app.log", "a", encoding="utf-8", buffering=1)  # noqa: SIM115
@@ -29,9 +30,16 @@ def _redirect_output() -> None:
 
 
 def _alert(message: str) -> None:
+    if sys.platform == "darwin":
+        import subprocess
+
+        # A mensagem vai como argumento (não dentro do script), sem precisar escapar aspas
+        script = 'on run argv\ndisplay alert "Finora" message (item 1 of argv) as critical\nend run'
+        subprocess.run(["osascript", "-e", script, message], check=False)
+        return
     import ctypes
 
-    ctypes.windll.user32.MessageBoxW(None, message, "ManagerFinance", 0x10)
+    ctypes.windll.user32.MessageBoxW(None, message, "Finora", 0x10)
 
 
 def _is_running() -> bool:
@@ -112,7 +120,7 @@ def main() -> None:
 
     # meu.pluggy.ai, dashboard.pluggy.ai etc. abrem no navegador, não dentro do app
     webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
-    webview.create_window("ManagerFinance", URL, width=1400, height=900, min_size=(1024, 680))
+    webview.create_window("Finora", URL, width=1400, height=900, min_size=(1024, 680))
     webview.start()
 
     if server:

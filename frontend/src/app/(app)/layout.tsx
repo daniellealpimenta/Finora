@@ -9,6 +9,7 @@ import {
   MessagesSquare,
   PiggyBank,
   Target,
+  UserRound,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -18,7 +19,7 @@ import { useEffect, useState } from "react";
 import { AssistantProvider } from "@/components/assistant/context";
 import { AssistantFab } from "@/components/assistant/fab";
 import { CoinMark, SoundToggle, ThemeToggle, Toaster } from "@/components/chrome";
-import { Pila } from "@/components/pila";
+import { MascotProvider, Pila } from "@/components/pila";
 import { IconButton, cx, tone } from "@/components/ui";
 import { api, setToken, type Me, type SetupStatus } from "@/lib/api";
 
@@ -94,6 +95,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
+    <MascotProvider initial={me.mascot}>
     <AssistantProvider>
       <div className="min-h-screen">
         {/* Barra do topo sempre grafite (theme-dark): âncora do layout e a moeda de latão brilhando nela */}
@@ -104,7 +106,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               className="mr-4 flex shrink-0 items-center gap-2.5 rounded-control font-display text-[17px] font-bold"
             >
               <CoinMark />
-              ManagerFinance
+              Finora
             </Link>
             <nav className="hidden gap-1 sm:flex" aria-label="Seções">
               {NAV.map((item) => (
@@ -131,7 +133,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </Link>
               <SoundToggle className="max-sm:hidden" />
               <ThemeToggle />
-              <IconButton label="Sair" onClick={logout}>
+              <Link
+                href="/perfil"
+                aria-label="Perfil"
+                title={`Perfil (${me.username ?? me.email})`}
+                aria-current={pathname === "/perfil" ? "page" : undefined}
+                className={cx(
+                  "grid size-11 place-items-center rounded-chip transition-colors duration-[var(--dur-fast)] sm:size-9 [&_svg]:size-4",
+                  pathname === "/perfil"
+                    ? "bg-surface-2 text-foreground"
+                    : "text-muted hover:bg-surface-2 hover:text-foreground",
+                )}
+              >
+                <UserRound />
+              </Link>
+              {/* No celular não cabe: o "Sair" fica na página Perfil */}
+              <IconButton label="Sair" onClick={logout} className="max-sm:hidden">
                 <LogOut />
               </IconButton>
             </div>
@@ -192,6 +209,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <Toaster />
       </div>
     </AssistantProvider>
+    </MascotProvider>
   );
 }
 

@@ -23,13 +23,13 @@ logger = logging.getLogger(__name__)
 SETTING_KEY = "assistant"
 
 # Só estes podem ser baixados ou removidos pelo app. Tamanhos aproximados (Q4, do registro
-# do Ollama); `memory` é o que ocupa na RAM ao responder, com contexto de 16k.
+# do Ollama); `memory` é o que ocupa na RAM ao responder, com contexto de 8k.
 CATALOG: list[dict] = [
     {
         "name": "qwen3:8b",
         "label": "Qwen3 8B",
         "size_gb": 5.2,
-        "memory_gb": 7,
+        "memory_gb": 6,
         "note": "Recomendado: bom português e boa chamada de ferramentas.",
     },
     {
@@ -43,12 +43,19 @@ CATALOG: list[dict] = [
         "name": "qwen3:14b",
         "label": "Qwen3 14B",
         "size_gb": 9.3,
-        "memory_gb": 12,
+        "memory_gb": 11,
         "note": "Respostas melhores, mais lento. Cabe nos 24 GB, mas pesa com outros apps abertos.",
     },
 ]
 DEFAULT_MODEL = "qwen3:8b"
-CONTEXT_TOKENS = 16384
+# Uma pergunta usa ~2.500 tokens (instruções, ferramentas e um resultado) e o histórico guarda
+# só o texto das falas: 8k cabe uma conversa longa. Com 16k o modelo reservava ~1,2 GB a mais,
+# e num Mac de 24 GB com outros apps abertos isso empurrava memória para o swap (resposta ~40%
+# mais lenta)
+CONTEXT_TOKENS = 8192
+# Depois da última pergunta o modelo fica carregado por 30 min (o padrão do Ollama é 5): a
+# pergunta seguinte não paga de novo a carga (~3 s) nem a leitura das instruções (~8 s)
+KEEP_ALIVE = "30m"
 _STATUS_TIMEOUT = httpx.Timeout(3.0)
 # Download e resposta podem demorar; só a conexão tem prazo curto
 _STREAM_TIMEOUT = httpx.Timeout(10.0, read=None)
@@ -210,6 +217,7 @@ def chat_stream(
         "tools": tools,
         "stream": True,
         "think": False,
+        "keep_alive": KEEP_ALIVE,
         "options": {"num_ctx": CONTEXT_TOKENS, "temperature": 0.3},
     }
     client = http or httpx.Client(timeout=_STREAM_TIMEOUT)
@@ -228,6 +236,46 @@ def chat_stream(
                     yield event["message"]
     except httpx.HTTPError:
         raise LlmError("Não deu para falar com o Ollama. Ele está aberto?") from None
+    finally:
+        if http is None:
+            client.close()
+
+
+# --- pré-aquecimento --------------------------------------------------------------
+
+
+def loaded(http: httpx.Client | None = None) -> list[str]:
+    """Modelos carregados na memória agora (/api/ps)."""
+    client = http or httpx.Client(timeout=_STATUS_TIMEOUT)
+    try:
+        resp = client.get(_url("/api/ps"))
+        resp.raise_for_status()
+    except httpx.HTTPError:
+        return []
+    finally:
+        if http is None:
+            client.close()
+    return [m["name"] for m in resp.json().get("models", [])]
+
+
+def warm_up(model: str, messages: list[dict], tools: list[dict], http=None) -> None:
+    """Carrega o modelo e já lê as instruções e as ferramentas, gerando um token só. O Ollama
+    guarda essa leitura: a pergunta seguinte, que começa igual, pula direto para a resposta.
+    Mesmo num_ctx do chat, senão ele recarregaria o modelo."""
+    body = {
+        "model": model,
+        "messages": messages,
+        "tools": tools,
+        "stream": False,
+        "think": False,
+        "keep_alive": KEEP_ALIVE,
+        "options": {"num_ctx": CONTEXT_TOKENS, "temperature": 0.3, "num_predict": 1},
+    }
+    client = http or httpx.Client(timeout=httpx.Timeout(10.0, read=180.0))
+    try:
+        client.post(_url("/api/chat"), json=body).raise_for_status()
+    except httpx.HTTPError:
+        logger.info("Pré-aquecimento do modelo falhou (Ollama fechado?)")
     finally:
         if http is None:
             client.close()

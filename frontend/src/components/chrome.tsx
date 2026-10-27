@@ -92,7 +92,7 @@ export function ThemeToggle() {
 
 /** Liga e desliga o "tlim" de moeda. Ao ligar, toca uma vez para você ouvir como é. */
 export function SoundToggle({ className }: { className?: string }) {
-  const [on, setOn] = useState(false);
+  const [on, setOn] = useState(true);
   useEffect(() => setOn(soundOn()), []);
   return (
     <IconButton

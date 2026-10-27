@@ -57,7 +57,7 @@ export function usePageEnter(scope: RefObject<HTMLElement | null>, ready: boolea
       const mm = gsap.matchMedia();
       mm.add(FULL, () => {
         const q = gsap.utils.selector(scope);
-        gsap
+        const tl = gsap
           .timeline()
           .from(q("[data-enter]"), {
             y: motion.enter.y,
@@ -67,9 +67,11 @@ export function usePageEnter(scope: RefObject<HTMLElement | null>, ready: boolea
             stagger: motion.enter.stagger,
             clearProps: "transform,opacity,visibility",
           })
-          .from(q("[data-fill]"), { scaleX: 0, ...motion.fill, stagger: 0.03 }, 0.2)
-          // O que passou do limite treme uma vez, depois que as barras enchem
-          .to(q("[data-over]"), motion.shake, 0.9);
+          .from(q("[data-fill]"), { scaleX: 0, ...motion.fill, stagger: 0.03 }, 0.2);
+        // O que passou do limite treme uma vez, depois que as barras enchem. Só com alvo: tween
+        // com keyframes e sem alvo quebra o GSAP ("tl.render is not a function")
+        const over = q("[data-over]");
+        if (over.length) tl.to(over, motion.shake, 0.9);
       });
       return () => mm.revert();
     },

@@ -48,7 +48,8 @@ def main() -> None:
     else:
         print(
             "[X] Código NÃO confere: o segredo cadastrado no app é diferente do salvo no banco.\n"
-            "    Apague a conta 'ManagerFinance' do app autenticador e rode create_user de novo."
+            "    Apague a conta 'Finora' (ou 'ManagerFinance', se for antiga) do app autenticador"
+            " e rode create_user de novo."
         )
 
 

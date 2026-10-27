@@ -53,6 +53,6 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/ManagerFinance-Setup-*.exe
+          files: dist/Finora-Setup-*.exe
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true

@@ -33,7 +33,7 @@ import type {
   Summary,
 } from "@/components/dashboard/types";
 import { CyclePicker } from "@/components/cycle-picker";
-import { Pila } from "@/components/pila";
+import { Pila, useMascot } from "@/components/pila";
 import { CycleRecap, useRecap } from "@/components/recap";
 import { Button, Card, ErrorNote, PageHeader } from "@/components/ui";
 import {
@@ -51,6 +51,7 @@ import { FULL, gsap, motion, prefersReducedMotion, useGSAP } from "@/lib/motion"
 
 export default function Dashboard() {
   const { key: month, setKey: setMonth, info: cycle, error: cycleError } = useCycle();
+  const { name: mascotName } = useMascot();
   // Ciclo atual fixo (o escolhido muda; o atual não): base do fechamento do ciclo anterior
   const [currentKey, setCurrentKey] = useState<string | null>(null);
   useEffect(() => {
@@ -221,7 +222,7 @@ export default function Dashboard() {
           <Card className="grid justify-items-center gap-4 py-10 text-center">
             <Pila mood="sleep" size={120} />
             <p className="max-w-sm text-sm text-muted">
-              Ainda não há transações. O Pila está cochilando: conecte um banco ou importe um extrato em{" "}
+              Ainda não há transações. O {mascotName} está cochilando: conecte um banco ou importe um extrato em{" "}
               <Link href="/contas" className="font-semibold text-accent underline underline-offset-2">
                 Contas
               </Link>

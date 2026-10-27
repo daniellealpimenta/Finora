@@ -141,7 +141,7 @@ export function WelcomeStep(props: StepProps) {
       title="Oi! Eu sou o Pila."
       intro={
         <p>
-          Vou te ajudar a deixar o ManagerFinance pronto. Ele junta as contas e os cartões dos seus bancos e mostra, a
+          Vou te ajudar a deixar o Finora pronto. Ele junta as contas e os cartões dos seus bancos e mostra, a
           cada ciclo da fatura, quanto dá para gastar sem apertar. Tudo fica guardado só neste computador.
         </p>
       }
@@ -394,7 +394,7 @@ export function MeuPluggyStep(props: StepProps) {
       intro={
         <p>
           O Meu Pluggy é um app grátis da Pluggy que conversa com o seu banco pelo Open Finance, o sistema oficial do
-          Banco Central. É lá que você autoriza; o ManagerFinance só lê o que você liberar.
+          Banco Central. É lá que você autoriza; o Finora só lê o que você liberar.
         </p>
       }
       figure={
@@ -509,7 +509,7 @@ export function PluggyKeysStep({ configured, ...props }: StepProps & { configure
                 </span>
               </div>
               <div className="grid gap-3.5 rounded-control border border-border p-4">
-                <span className="text-[13px] font-bold">ManagerFinance</span>
+                <span className="text-[13px] font-bold">Finora</span>
                 {[
                   ["CLIENT ID", "3c1f9a2e-xxxx-xxxx", "A"],
                   ["CLIENT SECRET", "•••••••••••••••••", "B"],
@@ -535,7 +535,7 @@ export function PluggyKeysStep({ configured, ...props }: StepProps & { configure
             Crie uma conta em <b>dashboard.pluggy.ai</b> e, quando ele pedir, crie um time (<i>team</i>).
           </>,
           <>
-            No topo, clique em <b>Applications</b> e crie uma aplicação. Pode chamar de “ManagerFinance”.
+            No topo, clique em <b>Applications</b> e crie uma aplicação. Pode chamar de “Finora”.
           </>,
           <>
             Copie o <b>Client ID</b> <FieldTag>A</FieldTag> e o <b>Client Secret</b> <FieldTag>B</FieldTag> para cá.

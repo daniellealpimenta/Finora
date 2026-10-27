@@ -20,7 +20,9 @@ from app.api.routes import (
     connections,
     dashboard,
     imports,
+    notifications,
     pluggy,
+    profile,
     savings,
     setup,
     transactions,
@@ -75,7 +77,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
-        title="ManagerFinance API",
+        title="Finora API",
         version=__version__,
         # Docs interativas só fora de produção
         docs_url=None if settings.environment == "production" else "/docs",
@@ -106,6 +108,8 @@ def create_app() -> FastAPI:
     app.include_router(cards.router)
     app.include_router(wishlist.router)
     app.include_router(assistant.router)
+    app.include_router(profile.router)
+    app.include_router(notifications.router)
 
     # Por último: as rotas da API têm prioridade sobre os arquivos do frontend
     frontend = _frontend_dir()

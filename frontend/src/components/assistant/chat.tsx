@@ -3,7 +3,7 @@
 import { Loader2, SendHorizontal, Square } from "lucide-react";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
-import { Pila, PilaSays } from "@/components/pila";
+import { Pila, PilaSays, useMascot } from "@/components/pila";
 import { ErrorNote, cx, tone } from "@/components/ui";
 import { useAssistant } from "./context";
 
@@ -16,7 +16,7 @@ const SUGGESTIONS = [
 ];
 
 /**
- * A conversa com o Pila: falas, sugestões e o campo de pergunta. Ocupa a altura que o pai der
+ * A conversa com o mascote: falas, sugestões e o campo de pergunta. Ocupa a altura que o pai der
  * (as falas rolam por dentro). Usada na aba Assistente e no painel do botão flutuante.
  */
 export function ChatView({
@@ -25,15 +25,21 @@ export function ChatView({
   setup,
 }: {
   inputId: string;
-  /** Painel do botão: Pila menor e menos sugestões */
+  /** Painel do botão: mascote menor e menos sugestões */
   compact?: boolean;
   /** O que dizer quando o modelo não está pronto (onde configurar) */
   setup: ReactNode;
 }) {
-  const { status, ready, turns, busy, ask, stop } = useAssistant();
+  const { status, ready, turns, busy, ask, warm, stop } = useAssistant();
+  const { name } = useMascot();
   const [draft, setDraft] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+
+  // Conversa aberta (aba ou botão do mascote): já carrega o modelo enquanto a pessoa digita
+  useEffect(() => {
+    warm();
+  }, [warm]);
 
   // Acompanha a resposta enquanto ela chega
   useEffect(() => {
@@ -163,7 +169,7 @@ export function ChatView({
           )}
         >
           <label htmlFor={inputId} className="sr-only">
-            Pergunta para o Pila
+            Pergunta para o {name}
           </label>
           <textarea
             ref={input}
@@ -172,7 +178,8 @@ export function ChatView({
             disabled={!ready}
             value={draft}
             maxLength={4000}
-            placeholder={ready ? "Pergunte ao Pila…" : "Assistente indisponível"}
+            placeholder={ready ? `Pergunte ao ${name}…` : "Assistente indisponível"}
+            onFocus={warm}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {

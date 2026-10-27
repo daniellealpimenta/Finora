@@ -3,11 +3,13 @@
 Uso (dentro de backend/):
   uv run python -m scripts.create_user voce@exemplo.com          # só senha
   uv run python -m scripts.create_user voce@exemplo.com --totp   # senha + 2FA (TOTP)
+  uv run python -m scripts.create_user voce@exemplo.com --username voce  # login também por "voce"
 """
 
 import argparse
 import getpass
 
+from app.core import usernames
 from app.db.session import SessionLocal
 from app.services.users import MIN_PASSWORD_LENGTH, save_user, totp_uri
 
@@ -16,6 +18,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("email")
     parser.add_argument("--totp", action="store_true", help="ativar 2FA (app autenticador)")
+    parser.add_argument("--username", help="nome de usuário, para entrar sem digitar o e-mail")
     args = parser.parse_args()
 
     password = getpass.getpass("Senha: ")
@@ -24,8 +27,12 @@ def main() -> None:
     if getpass.getpass("Confirme a senha: ") != password:
         raise SystemExit("As senhas não conferem.")
 
+    username = usernames.normalize(args.username) if args.username else None
+    if username and not usernames.is_valid(username):
+        raise SystemExit(f"Nome de usuário inválido. {usernames.RULES}.")
+
     with SessionLocal() as db:
-        user, totp_secret = save_user(db, args.email, password, totp=args.totp)
+        user, totp_secret = save_user(db, args.email, password, totp=args.totp, username=username)
 
     print(f"Usuário {user.email} salvo.")
     if totp_secret:

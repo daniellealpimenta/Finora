@@ -1,4 +1,4 @@
-# ManagerFinance: design system
+# Finora: design system
 
 Fonte única de verdade do visual do app. Toda cor, fonte, espaçamento, raio e animação do
 frontend sai daqui. Os tokens vivem em `frontend/src/app/globals.css` (CSS) e
@@ -178,6 +178,18 @@ até em 28px. Componente `frontend/src/components/pila.tsx`, com expressões lig
 | `shy` | olhos fechados e bochecha corada: senha sendo digitada no login |
 | `celebrate` | boca aberta e brilhos de moeda: sync trouxe novidade, cofrinho cresceu, fechamento no azul |
 
+**Outros mascotes (2026-10-27).** No Perfil o usuário troca o Pila por **Casco**, o tatu, ou
+**Guará**, o lobo-guará. A escolha fica no banco (`AppSetting` "mascot") e vale para o app todo:
+todo texto que cita o mascote usa o nome escolhido (`useMascot().name`), inclusive o assistente,
+que se apresenta com ele. Os três dividem a grade de 120, os humores e as regras abaixo. Muda só o
+corpo e onde ficam olhos, boca, "Zz" e gota (`FACES` em `pila.tsx`).
+- Casco: tatu à moda do Fuleco, com casco de faixas por cima da cabeça como um capacete, orelhas
+  pontudas saindo dele e focinho comprido entre os olhos, com o nariz na ponta e uma boca só
+  embaixo. Casco `#8B7A66` com faixas `#A5937C`, corpo `#7D6C59`, rosto `#E2C9A4`, focinho
+  `#F0DCC0`, orelhas `#C4A37F`/`#E7B39C`, olhos e boca `#2A1F16`.
+- Guará: orelhas grandes, pelagem `#D9772F`, focinho `#F7E6CC`, "capa" do pescoço e patas
+  `#2B2420`, parte de dentro das orelhas `#F6DCB8`, olhos e boca `#24160D`.
+
 Regras:
 - Aparece só quando há algo a dizer: login, estados vazios, conquistas e o balão do topo da
   Visão geral. Nunca em todo card.
@@ -347,9 +359,9 @@ Lê em 16px e diz "cofrinho" sem precisar do porco inteiro.
 
 ## Som
 
-Desligado por padrão; botão no topo (som de moeda). Um "tlim" sintetizado (`lib/sound.ts`, duas
-notas senoidais de 0,35s) só quando dinheiro entra: sync com novidade, cofrinho que cresceu,
-fechamento no azul. Escolha em `localStorage` (`mf_sound`).
+Ligado por padrão (desde 2026-10-27); o botão no topo (som de moeda) desliga. Um "tlim"
+sintetizado (`lib/sound.ts`, duas notas senoidais de 0,35s) só quando dinheiro entra: sync com
+novidade, cofrinho que cresceu, fechamento no azul. Escolha em `localStorage` (`mf_sound`).
 
 ## Texto
 

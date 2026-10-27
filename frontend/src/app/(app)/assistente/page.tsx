@@ -13,7 +13,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { ChatView } from "@/components/assistant/chat";
 import { useAssistant } from "@/components/assistant/context";
 import { Dialog } from "@/components/dialog";
-import { Pila } from "@/components/pila";
+import { Pila, useMascot } from "@/components/pila";
 import {
   Button,
   Card,
@@ -42,6 +42,7 @@ const gb = (bytes: number) =>
 
 export default function AssistentePage() {
   const { status, ready, ask, turns, busy, clear } = useAssistant();
+  const { name } = useMascot();
   const [insights, setInsights] = useState<Insight[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -61,7 +62,7 @@ export default function AssistentePage() {
     <div ref={root}>
       <PageHeader
         title="Assistente"
-        description="O Pila responde sobre as suas contas com um modelo que roda só no seu computador. Nada sai da máquina."
+        description={`O ${name} responde sobre as suas contas com um modelo que roda só no seu computador. Nada sai da máquina.`}
       />
       {error && (
         <div className="mb-4">
@@ -74,7 +75,7 @@ export default function AssistentePage() {
             <div className="flex items-center gap-3">
               <Pila size={44} mood={ready ? "happy" : "sleep"} />
               <div className="min-w-0 flex-1">
-                <h2 className="text-lg font-semibold tracking-[-0.01em]">Converse com o Pila</h2>
+                <h2 className="text-lg font-semibold tracking-[-0.01em]">Converse com o {name}</h2>
                 <p className="flex items-center gap-1.5 text-xs text-muted">
                   <span
                     className={cx("size-2 rounded-full", ready ? "bg-positive" : "bg-muted")}
@@ -119,6 +120,7 @@ function InsightsCard({
   canAsk: boolean;
   onAsk: (text: string) => void;
 }) {
+  const { name } = useMascot();
   return (
     <Card data-enter>
       <CardTitle icon={Sparkles} color={COLOR} hint="calculados pelo app">
@@ -174,7 +176,7 @@ function InsightsCard({
                   }
                   className="justify-self-start pl-5 text-xs font-semibold text-accent hover:underline"
                 >
-                  Perguntar ao Pila
+                  Perguntar ao {name}
                 </button>
               )}
             </li>

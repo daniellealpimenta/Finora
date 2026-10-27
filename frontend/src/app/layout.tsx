@@ -16,7 +16,7 @@ const bricolage = Bricolage_Grotesque({
 });
 
 export const metadata: Metadata = {
-  title: "ManagerFinance",
+  title: "Finora",
   description: "Suas finanças, automaticamente",
 };
 

@@ -40,7 +40,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await login(
-        String(form.get("email")),
+        String(form.get("login")),
         String(form.get("password")),
         String(form.get("totp") ?? ""),
       );
@@ -80,7 +80,7 @@ export default function LoginPage() {
         <Guilloche className="-z-10" />
         <div className="flex items-center gap-2.5 font-display text-lg font-bold">
           <CoinMark />
-          ManagerFinance
+          Finora
         </div>
 
         <div data-enter className="grid gap-6">
@@ -131,10 +131,20 @@ export default function LoginPage() {
             <p className="text-sm text-muted">Bem-vindo de volta.</p>
           </div>
           <div className="grid gap-1.5">
-            <label htmlFor="email" className="label">
-              E-mail
+            <label htmlFor="login" className="label">
+              E-mail ou usuário
             </label>
-            <input id="email" name="email" type="email" required autoComplete="email" className={input} />
+            <input
+              id="login"
+              name="login"
+              type="text"
+              required
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              className={input}
+            />
           </div>
           <div className="grid gap-1.5">
             <label htmlFor="password" className="label">

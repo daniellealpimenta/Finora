@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Foto de perfil (Gmail, redes): a moeda do app em fundo grafite, sem cantos e com margem,
+       porque os serviços cortam a foto em círculo -->
+  <rect width="64" height="64" fill="#141a20"/>
+  <circle cx="32" cy="32" r="20" fill="#d2ac6a"/>
+  <circle cx="32" cy="32" r="16" fill="none" stroke="#6b5221" stroke-width="1.4" opacity="0.45"/>
+  <ellipse cx="32" cy="32.8" rx="10.9" ry="8.2" fill="#ebcf98" stroke="#6b5221" stroke-width="2.3"/>
+  <ellipse cx="28" cy="32.8" rx="1.9" ry="3" fill="#6b5221"/>
+  <ellipse cx="36" cy="32.8" rx="1.9" ry="3" fill="#6b5221"/>
+</svg>

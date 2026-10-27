@@ -9,6 +9,9 @@ os.environ["FIELD_ENCRYPTION_KEY"] = Fernet.generate_key().decode()
 os.environ["PLUGGY_CLIENT_ID"] = "test-client"
 os.environ["PLUGGY_CLIENT_SECRET"] = "test-secret"
 os.environ["SCHEDULER_ENABLED"] = "false"
+# Nunca usar a conta de e-mail do .env de quem roda os testes
+os.environ["SMTP_USER"] = ""
+os.environ["SMTP_PASSWORD"] = ""
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -48,3 +51,15 @@ def auth_headers(db: Session) -> dict[str, str]:
     db.add(user)
     db.commit()
     return {"Authorization": f"Bearer {create_access_token(str(user.id))}"}
+
+
+@pytest.fixture(autouse=True)
+def _no_real_email(monkeypatch):
+    """Nenhum teste fala com um servidor de e-mail de verdade."""
+    import smtplib
+
+    def blocked(*args, **kwargs):
+        raise AssertionError("teste tentou abrir conexão SMTP real")
+
+    monkeypatch.setattr(smtplib, "SMTP", blocked)
+    monkeypatch.setattr(smtplib, "SMTP_SSL", blocked)

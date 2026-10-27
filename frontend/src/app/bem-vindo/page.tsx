@@ -106,7 +106,7 @@ export default function WelcomePage() {
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-5 pt-8 sm:px-10 sm:pt-11">
         <div className="flex items-center gap-2.5 font-display text-[17px] font-bold">
           <CoinMark />
-          ManagerFinance
+          Finora
         </div>
 
         {step === "oi" && <WelcomeStep {...props} />}

@@ -31,6 +31,9 @@ type Assistant = {
   turns: Turn[];
   busy: boolean;
   ask: (text: string) => void;
+  /** Carrega o modelo em segundo plano (conversa abriu, campo em foco): a primeira resposta
+   * sai em ~9 s em vez de ~20 s. O backend ignora se ele já estiver quente. */
+  warm: () => void;
   stop: () => void;
   clear: () => void;
 };
@@ -100,6 +103,13 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const active = status?.models.find((m) => m.name === status.active_model);
   const ready = Boolean(status?.ollama && active?.installed);
 
+  const lastWarm = useRef(0);
+  const warm = useCallback(() => {
+    if (!ready || Date.now() - lastWarm.current < 60_000) return;
+    lastWarm.current = Date.now();
+    api("/assistant/warmup", { method: "POST" }).catch(() => null);
+  }, [ready]);
+
   const update = (fn: (t: Turn) => Turn) =>
     setTurns((all) => [...all.slice(0, -1), fn(all[all.length - 1])]);
 
@@ -155,6 +165,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
         turns,
         busy,
         ask,
+        warm,
         stop: () => abort.current?.abort(),
         clear: () => setTurns([]),
       }}

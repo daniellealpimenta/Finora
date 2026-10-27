@@ -55,17 +55,67 @@ export function qs(params: Record<string, string | number | null | undefined>): 
   return s ? `?${s}` : "";
 }
 
-export async function login(email: string, password: string, totpCode?: string) {
+/** `user`: e-mail ou nome de usuário. */
+export async function login(user: string, password: string, totpCode?: string) {
   const { access_token } = await api<{ access_token: string }>("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password, totp_code: totpCode || null }),
+    body: JSON.stringify({ login: user, password, totp_code: totpCode || null }),
   });
   setToken(access_token);
 }
 
 // --- tipos da API ----------------------------------------------------------
 
-export type Me = { id: number; email: string };
+export type Me = { id: number; email: string; username: string | null; mascot: string };
+
+export type ProfileKey = {
+  env: string;
+  label: string;
+  purpose: string;
+  configured: boolean;
+  hint: string | null;
+  status: "ok" | "warn" | "bad";
+  note: string | null;
+};
+
+export type Profile = {
+  email: string;
+  username: string | null;
+  created_at: string;
+  totp_enabled: boolean;
+  session_minutes: number;
+  connections: number;
+  keys: ProfileKey[];
+  storage: {
+    data_dir: string;
+    database: string | null;
+    database_bytes: number | null;
+    backups: number;
+    env_files: string[];
+  };
+};
+
+export type TotpSetup = { secret: string; uri: string; qr_svg: string };
+
+export type NoticeKind = {
+  id: string;
+  group: "calendar" | "event" | "alert";
+  label: string;
+  about: string;
+};
+
+export type Notifications = {
+  account: { user: string; host: string; port: number; source: "profile" | "env" } | null;
+  enabled: boolean;
+  to: string | null;
+  default_to: string | null;
+  detail: "full" | "totals" | "discreet";
+  quiet: boolean;
+  kinds: Record<string, boolean>;
+  catalog: NoticeKind[];
+  last_error: { at: string; message: string } | null;
+  log: { kind: string; subject: string | null; status: string; at: string }[];
+};
 
 /** Primeira configuração (tela /bem-vindo). `step` é onde a pessoa parou. */
 export type SetupStatus = {

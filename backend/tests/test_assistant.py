@@ -233,3 +233,29 @@ def test_chat_explains_when_ollama_is_off(client, auth_headers, data):
     assert _sse(resp.text) == [
         {"type": "error", "message": "Não deu para falar com o Ollama. Ele está aberto?"}
     ]
+
+
+def test_warm_up_only_when_needed(db, monkeypatch):
+    import threading
+    from datetime import date
+
+    from app.services import assistant, llm
+
+    calls = []
+    monkeypatch.setattr(llm, "installed", lambda: [{"name": "qwen3:8b", "size": 1}])
+    monkeypatch.setattr(llm, "loaded", lambda: [])
+    monkeypatch.setattr(llm, "warm_up", lambda model, messages, tools: calls.append(model))
+    assistant._warmed.clear()
+
+    assert assistant.warm_up(db, date(2026, 10, 27)) is True
+    for t in threading.enumerate():
+        if t.name == "llm-warmup":
+            t.join(timeout=5)
+    assert calls == ["qwen3:8b"]
+
+    # Já carregado e aquecido há pouco: não repete
+    monkeypatch.setattr(llm, "loaded", lambda: ["qwen3:8b"])
+    assert assistant.warm_up(db, date(2026, 10, 27)) is False
+    # Sem o modelo baixado: nada a fazer
+    monkeypatch.setattr(llm, "installed", lambda: [])
+    assert assistant.warm_up(db, date(2026, 10, 27)) is False

@@ -1,7 +1,7 @@
 ﻿; Instalador para Windows (Inno Setup 6). Antes, gere o programa:
 ;   .\scripts\build-desktop.ps1 -NoInstall
 ;   iscc /DAppVersion=0.3.0 scripts\installer.iss
-; Saída: dist\ManagerFinance-Setup-<versão>.exe. O GitHub Actions faz isso a cada tag v*.
+; Saída: dist\Finora-Setup-<versão>.exe. O GitHub Actions faz isso a cada tag v*.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0-dev"
@@ -10,19 +10,19 @@
 [Setup]
 ; Não mude o AppId: é por ele que o Windows reconhece uma atualização do mesmo app
 AppId={{6F1C2E7A-4B8D-4E3F-9A21-5C7D8E9F0A1B}
-AppName=ManagerFinance
+AppName=Finora
 AppVersion={#AppVersion}
-AppPublisher=ManagerFinance
+AppPublisher=Finora
 AppPublisherURL=https://github.com/daniellealpimenta/ManagerFinance
-DefaultDirName={localappdata}\Programs\ManagerFinance
-DefaultGroupName=ManagerFinance
+DefaultDirName={localappdata}\Programs\Finora
+DefaultGroupName=Finora
 DisableProgramGroupPage=yes
 ; Instala só para o usuário atual, sem pedir senha de administrador
 PrivilegesRequired=lowest
 OutputDir=..\dist
-OutputBaseFilename=ManagerFinance-Setup-{#AppVersion}
+OutputBaseFilename=Finora-Setup-{#AppVersion}
 SetupIconFile=..\frontend\src\app\favicon.ico
-UninstallDisplayIcon={app}\ManagerFinance.exe
+UninstallDisplayIcon={app}\Finora.exe
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -38,14 +38,14 @@ Name: "ptbr"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 Name: "desktopicon"; Description: "Criar atalho na área de trabalho"; Flags: unchecked
 
 [Files]
-Source: "..\backend\dist\ManagerFinance\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\backend\dist\Finora\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{userprograms}\ManagerFinance"; Filename: "{app}\ManagerFinance.exe"
-Name: "{userdesktop}\ManagerFinance"; Filename: "{app}\ManagerFinance.exe"; Tasks: desktopicon
+Name: "{userprograms}\Finora"; Filename: "{app}\Finora.exe"
+Name: "{userdesktop}\Finora"; Filename: "{app}\Finora.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\ManagerFinance.exe"; Description: "Abrir o ManagerFinance"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Finora.exe"; Description: "Abrir o Finora"; Flags: nowait postinstall skipifsilent
 
 [Code]
 // Os dados (banco, chaves, logs) ficam fora da pasta do programa. Desinstalar mantém tudo,
