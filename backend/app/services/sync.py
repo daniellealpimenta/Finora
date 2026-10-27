@@ -124,7 +124,16 @@ def _merchant_name(tx: dict[str, Any]) -> str | None:
 
 def _trimmed_raw(tx: dict[str, Any]) -> dict[str, Any]:
     # Guarda só o útil para análise; paymentData traz CPF/conta de terceiros
-    keys = ("category", "categoryId", "operationType", "creditCardMetadata", "merchant")
+    # Moeda: compra no exterior vira alerta por e-mail (app/services/notify/rules.py)
+    keys = (
+        "category",
+        "categoryId",
+        "operationType",
+        "creditCardMetadata",
+        "merchant",
+        "currencyCode",
+        "amountInAccountCurrency",
+    )
     return {k: tx[k] for k in keys if tx.get(k) is not None}
 
 

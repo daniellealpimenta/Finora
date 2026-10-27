@@ -29,7 +29,7 @@ const syncing = store(false);
 export const setSyncing = (v: boolean) => syncing.set(v);
 export const useSyncing = () => useSyncExternalStore(syncing.subscribe, syncing.get, () => false);
 
-/** `mood` troca o ícone pelo Pila com aquele humor; `coin` toca o "tlim" (se o som estiver ligado). */
+/** `mood` troca o ícone pelo mascote com aquele humor; `coin` toca o "tlim" (se o som estiver ligado). */
 export type Toast = { id: number; message: string; tone: "ok" | "bad"; mood?: PilaMood };
 
 const toasts = store<Toast[]>([]);

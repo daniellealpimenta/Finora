@@ -1,17 +1,18 @@
 "use client";
 
-// Som de moeda opcional (MASTER.md, "Som"): desligado por padrão, um "tlim" curto quando
-// dinheiro entra (cofrinho cresceu, sync trouxe novidade, fechou no azul). Sintetizado na hora,
-// sem arquivo de áudio. A escolha fica no localStorage: é preferência de quem usa.
+// Som de moeda (MASTER.md, "Som"): ligado por padrão e desligado pelo botão do topo. Um "tlim"
+// curto quando dinheiro entra (cofrinho cresceu, sync trouxe novidade, fechou no azul).
+// Sintetizado na hora, sem arquivo de áudio. A escolha fica no localStorage: é de quem usa.
 
 const KEY = "mf_sound";
 let ctx: AudioContext | null = null;
 
 export function soundOn(): boolean {
   try {
-    return localStorage.getItem(KEY) === "on";
+    // Só fica mudo quem desligou no botão
+    return localStorage.getItem(KEY) !== "off";
   } catch {
-    return false;
+    return true;
   }
 }
 

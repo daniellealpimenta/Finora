@@ -5,20 +5,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 
-import { Pila } from "@/components/pila";
+import { Pila, useMascot } from "@/components/pila";
 import { IconButton, cx } from "@/components/ui";
 import { gsap, motion, prefersReducedMotion, useGSAP } from "@/lib/motion";
 import { ChatView } from "./chat";
 import { useAssistant } from "./context";
 
 /**
- * Botão redondo com o Pila no canto inferior direito: abre a conversa num painel, em qualquer
+ * Botão redondo com o mascote no canto inferior direito: abre a conversa num painel, em qualquer
  * página. Na aba Assistente ele some (a conversa já está na tela).
  */
 export function AssistantFab() {
   // No .exe (export estático, trailingSlash) o caminho chega como "/transacoes/"
   const pathname = usePathname().replace(/(.)\/$/, "$1");
   const { busy, turns } = useAssistant();
+  const { name } = useMascot();
   const [open, setOpen] = useState(false);
   // Resposta que chegou com o painel fechado: um ponto no botão avisa
   const [unread, setUnread] = useState(false);
@@ -43,9 +44,9 @@ export function AssistantFab() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-label={
-          open ? "Fechar a conversa com o Pila" : "Conversar com o Pila"
+          open ? `Fechar a conversa com o ${name}` : `Conversar com o ${name}`
         }
-        title={open ? "Fechar" : "Conversar com o Pila"}
+        title={open ? "Fechar" : `Conversar com o ${name}`}
         className={cx(
           "fixed right-4 bottom-[calc(76px+env(safe-area-inset-bottom,0px))] z-40 grid size-14 place-items-center rounded-full sm:right-6 sm:bottom-6",
           "border border-card-edge bg-surface transition-colors duration-[var(--dur-fast)] ease-[var(--ease-out)] hover:bg-surface-2",
@@ -74,6 +75,7 @@ function ChatPanel({ onClose }: { onClose: () => void }) {
   const closing = useRef(false);
   const titleId = useId();
   const inputId = useId();
+  const { name } = useMascot();
 
   useGSAP(
     () => {
@@ -133,7 +135,7 @@ function ChatPanel({ onClose }: { onClose: () => void }) {
     >
       <div className="flex items-center gap-2">
         <h2 id={titleId} className="flex-1 font-semibold">
-          Pila
+          {name}
         </h2>
         <Link
           href="/assistente"

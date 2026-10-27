@@ -125,6 +125,13 @@ def get_insights(_: CurrentUser, db: DbSession) -> list[dict]:
     return insights.find(db, date.today())
 
 
+@router.post("/assistant/warmup", status_code=status.HTTP_202_ACCEPTED)
+def warmup(_: CurrentUser, db: DbSession) -> dict:
+    """Carrega o modelo em segundo plano quando a conversa abre: a primeira pergunta sai em
+    ~9 s em vez de ~20 s."""
+    return {"started": assistant.warm_up(db, date.today())}
+
+
 @router.post("/assistant/chat")
 def chat(body: ChatIn, _: CurrentUser, db: DbSession) -> StreamingResponse:
     """Resposta em streaming (SSE). A conversa não é guardada: o front manda o histórico.

@@ -72,3 +72,19 @@ def test_login_password_only_when_totp_disabled(client, db):
     resp = client.post("/auth/login", json={"email": "semtotp@exemplo.com", "password": PASSWORD})
     assert resp.status_code == 200
     assert "access_token" in resp.json()
+
+
+def test_login_with_username(client, db):
+    db.add(User(email="dono@exemplo.com", username="dono", password_hash=hash_password(PASSWORD)))
+    db.commit()
+    for login in ("dono", "DONO ", "dono@exemplo.com"):
+        res = client.post("/auth/login", json={"login": login, "password": PASSWORD})
+        assert res.status_code == 200, login
+    # O campo antigo (`email`) continua valendo
+    assert (
+        client.post("/auth/login", json={"email": "dono", "password": PASSWORD}).status_code == 200
+    )
+    assert (
+        client.post("/auth/login", json={"login": "outro", "password": PASSWORD}).status_code == 401
+    )
+    assert client.post("/auth/login", json={"password": PASSWORD}).status_code == 422

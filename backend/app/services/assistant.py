@@ -1,4 +1,5 @@
-"""Assistente (o Pila): conversa com o modelo local, que consulta o app por ferramentas.
+"""Assistente (o mascote escolhido no Perfil): conversa com o modelo local, que consulta o
+app por ferramentas.
 
 Regra central: o modelo não faz contas nem lê o banco. Ele pede os números às ferramentas
 abaixo (funções que já existem, testadas) e só explica. Todas são somente leitura.
@@ -7,6 +8,8 @@ abaixo (funções que já existem, testadas) e só explica. Todas são somente l
 import json
 import logging
 import re
+import threading
+import time
 from collections.abc import Callable, Iterator
 from datetime import date
 from decimal import Decimal
@@ -15,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import CategoryKind, WishItem, WishStatus
-from app.services import affordability, analytics, insights, llm
+from app.services import affordability, analytics, insights, llm, mascot
 from app.services import cycles as cycle_service
 from app.services import wishlist as wish_service
 from app.services.cycles import shift_key
@@ -59,6 +62,13 @@ def _resumo(db: Session, today: date, args: dict) -> dict:
 def _previsao(db: Session, today: date, args: dict) -> dict:
     ctx = affordability.context(db, today)
     f = dict(ctx["forecast"])
+    # Campos internos da tela (chaves, flags de ignorar), que só gastariam leitura do modelo
+    f["cycle"] = {k: f["cycle"][k] for k in ("key", "start", "end")}
+    f["incomes"] = [
+        {k: i[k] for k in ("label", "expected", "received", "remaining", "expected_date")}
+        for i in f["incomes"]
+        if i.get("counted", True)
+    ]
     if not f["tithe"]["rate"]:
         del f["tithe"]  # dízimo desligado: só confundiria o modelo
     f["saude"] = ctx["health"]
@@ -273,7 +283,21 @@ def run_tool(db: Session, today: date, name: str, args: dict) -> str:
         result = entry[0](db, today, args or {})
     except (ToolError, ValueError) as e:
         return json.dumps({"erro": str(e)}, ensure_ascii=False)
-    return json.dumps(result, default=str, ensure_ascii=False)
+    return json.dumps(_compact(result), default=str, ensure_ascii=False, separators=(",", ":"))
+
+
+def _compact(value):
+    """Menos texto para o modelo ler (cada token lido custa tempo): frações com 3 casas e
+    nomes de banco sem os espaços de preenchimento ("CLAUDE SUB    .SAN")."""
+    if isinstance(value, dict):
+        return {k: _compact(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_compact(v) for v in value]
+    if isinstance(value, float):
+        return round(value, 3)
+    if isinstance(value, str):
+        return " ".join(value.split())
+    return value
 
 
 # --- conversa -----------------------------------------------------------------
@@ -286,7 +310,8 @@ def system_prompt(db: Session, today: date) -> str:
         rule = f"vão do dia {day} até a véspera desse dia no mês seguinte"
     else:
         rule = "acompanham o fechamento da fatura do cartão principal"
-    return f"""Você é o Pila, o assistente do ManagerFinance, um app de finanças pessoais que roda
+    name = mascot.mascot_name(db)
+    return f"""Você é o {name}, o assistente do Finora, um app de finanças pessoais que roda
 só no computador do usuário. Responda em português do Brasil, curto e direto (até 6 frases ou
 uma lista curta), num tom calmo e amigável.
 
@@ -366,6 +391,41 @@ class _ThinkFilter:
     def flush(self) -> str:
         rest, self.buffer = ("" if self.inside else self.buffer), ""
         return rest
+
+
+_warm_lock = threading.Lock()
+_warmed: dict[str, float] = {}  # chave (modelo + dia) -> quando aqueceu
+WARM_AGAIN_AFTER = 25 * 60  # o modelo fica carregado 30 min (llm.KEEP_ALIVE)
+
+
+def warm_up(db: Session, today: date) -> bool:
+    """Prepara o modelo para a próxima pergunta, em segundo plano. Chamado quando a conversa
+    abre ou o campo ganha foco. Devolve False se nem precisou (já está quente)."""
+    model = llm.get_model(db)
+    if not llm.is_installed(model, llm.installed()):
+        return False
+    key = f"{model}|{today}"
+    hot = any(llm._same_model(m, model) for m in llm.loaded())
+    if hot and time.monotonic() - _warmed.get(key, -WARM_AGAIN_AFTER) < WARM_AGAIN_AFTER:
+        return False
+    # Mesmo começo de uma pergunta de verdade: instruções do dia + ferramentas
+    messages = [
+        {"role": "system", "content": system_prompt(db, today)},
+        {"role": "user", "content": "oi"},
+    ]
+    tools = tool_specs()
+
+    def run() -> None:
+        if not _warm_lock.acquire(blocking=False):
+            return  # já tem um aquecendo
+        try:
+            llm.warm_up(model, messages, tools)
+            _warmed[key] = time.monotonic()
+        finally:
+            _warm_lock.release()
+
+    threading.Thread(target=run, name="llm-warmup", daemon=True).start()
+    return True
 
 
 def answer(db: Session, history: list[dict], today: date, http=None) -> Iterator[str]:

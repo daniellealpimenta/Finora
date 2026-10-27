@@ -1,4 +1,4 @@
-# Gera o programa para Windows: backend\dist\ManagerFinance\ManagerFinance.exe
+# Gera o programa para Windows: backend\dist\Finora\Finora.exe
 # O modo web (uvicorn + npm run dev) continua igual; isto só empacota o mesmo código.
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
@@ -29,19 +29,19 @@ try {
 }
 
 # 3. Instala para o usuário, como os outros apps (fora do OneDrive), com atalho no Menu Iniciar
-$install = "$env:LOCALAPPDATA\Programs\ManagerFinance"
-if (Get-Process ManagerFinance -ErrorAction SilentlyContinue) {
-    throw "Feche o ManagerFinance antes de instalar a nova versao"
+$install = "$env:LOCALAPPDATA\Programs\Finora"
+if (Get-Process Finora -ErrorAction SilentlyContinue) {
+    throw "Feche o Finora antes de instalar a nova versao"
 }
-robocopy "$root\backend\dist\ManagerFinance" $install /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+robocopy "$root\backend\dist\Finora" $install /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "falha ao copiar para $install" }
 
 $shell = New-Object -ComObject WScript.Shell
 $startMenu = [Environment]::GetFolderPath("Programs")
-$link = $shell.CreateShortcut("$startMenu\ManagerFinance.lnk")
-$link.TargetPath = "$install\ManagerFinance.exe"
+$link = $shell.CreateShortcut("$startMenu\Finora.lnk")
+$link.TargetPath = "$install\Finora.exe"
 $link.WorkingDirectory = $install
-$link.Description = "ManagerFinance"
+$link.Description = "Finora"
 $link.Save()
 
 Write-Host "`nInstalado em $install (atalho no Menu Iniciar)"

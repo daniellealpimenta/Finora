@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="docs/pila.svg" width="140" alt="Pila, o porquinho do ManagerFinance" />
+<img src="docs/pila.svg" width="140" alt="Pila, o porquinho do Finora" />
 
-# ManagerFinance
+# Finora
 
 **Suas finanças, guardadas no seu computador.**
 
@@ -23,7 +23,7 @@ categoriza os gastos e mostra, ciclo a ciclo, quanto dá para gastar sem apertar
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dashboard-dark.png" />
-  <img src="docs/screenshots/dashboard-light.png" alt="Visão geral do ManagerFinance" />
+  <img src="docs/screenshots/dashboard-light.png" alt="Visão geral do Finora" />
 </picture>
 
 > [!NOTE]
@@ -95,7 +95,7 @@ Com "reduzir movimento" ligado no sistema, ele fica parado.
 backend/    FastAPI + SQLAlchemy + Alembic + SQLite (Python 3.12, uv)
 frontend/   Next.js 15 + React 19 + Tailwind 4 + GSAP
 docs/       notas de arquitetura (assistente local) e prints
-scripts/    build do programa para Windows (.exe)
+scripts/    build do programa para Windows (.exe) e macOS (.app/.dmg)
 ```
 
 ## 🚀 Primeiros passos
@@ -130,7 +130,7 @@ uv run python -m scripts.pluggy_check <item_id> --days 30
 
 Não precisa de Docker nem de servidor de banco: o banco é um arquivo SQLite em
 `%LOCALAPPDATA%\ManagerFinance\managerfinance.db`, fora do OneDrive (no macOS:
-`~/Library/Application Support/ManagerFinance/`).
+`~/Library/Application Support/ManagerFinance/`). A pasta mantém o nome de antes do Finora.
 
 Primeira vez (dentro de `backend/`):
 
@@ -151,11 +151,13 @@ cd frontend && npm install && npm run dev                 # app: http://localhos
 🔁 **Depois de atualizar o código:** sempre que houver migração nova
 (`backend/migrations/versions`), rode `uv run alembic upgrade head` dentro de `backend/`.
 
-### 🪟 Programa para Windows (.exe)
+### 🖥️ Programa para Windows e macOS
 
 O mesmo código também vira um programa com janela própria, sem terminais nem navegador.
 O modo web acima continua funcionando igual; os dois usam o mesmo banco (só não rode os dois
 ao mesmo tempo).
+
+**🪟 Windows (.exe)**
 
 ```powershell
 .\scripts\build-desktop.ps1      # gera o .exe e instala, com atalho no Menu Iniciar
@@ -163,13 +165,38 @@ ao mesmo tempo).
 
 - Uma vez: copie o `.env` do projeto para `%LOCALAPPDATA%\ManagerFinance\.env`
   (o programa não roda dentro da pasta do projeto).
-- Fica instalado em `%LOCALAPPDATA%\Programs\ManagerFinance` (fora do OneDrive). Para fixar
-  na barra de tarefas: Menu Iniciar → ManagerFinance → botão direito → Fixar na barra de
+- Fica instalado em `%LOCALAPPDATA%\Programs\Finora` (fora do OneDrive). Para fixar
+  na barra de tarefas: Menu Iniciar → Finora → botão direito → Fixar na barra de
   tarefas. Reinstalar (rodar o script de novo, com o app fechado) mantém o atalho.
+- Log em `%LOCALAPPDATA%\ManagerFinance\logs\app.log`.
+
+**🍎 macOS (.app e .dmg)**
+
+```bash
+scripts/build-desktop.sh               # gera o .app e o .dmg e instala em /Applications
+scripts/build-desktop.sh --no-install  # só gera
+```
+
+- Na primeira vez o script copia o `.env` do projeto para
+  `~/Library/Application Support/ManagerFinance/.env` (só se ainda não existir).
+- Abra pelo Launchpad ou Spotlight; para fixar, arraste para o Dock. Log em
+  `~/Library/Application Support/ManagerFinance/logs/app.log`.
+- O `.dmg` (`backend/dist/Finora-<versão>.dmg`) é o instalador para outros Macs com
+  Apple Silicon (M1 em diante): abrir e arrastar para Aplicativos.
+- **Assinatura, fora da App Store.** Sem certificado, o app é assinado ad-hoc: roda no Mac que
+  gerou, mas num Mac que baixou o `.dmg` o sistema pede "Abrir mesmo assim" em Ajustes →
+  Privacidade e Segurança. Para abrir sem aviso (como Steam ou Discord, baixados de site), crie
+  um certificado **Developer ID Application** (Xcode → Ajustes → Contas → Gerenciar
+  Certificados → +) e salve uma vez as credenciais de notarização:
+  `xcrun notarytool store-credentials finora --apple-id voce@exemplo.com --team-id SEU_TEAM_ID`.
+  Daí em diante: `MF_NOTARY_PROFILE=finora scripts/build-desktop.sh`. O script acha o
+  certificado sozinho, assina, notariza e grampeia o `.dmg`.
+
+**Nos dois**
+
 - O programa aplica as migrações sozinho, guardando antes `managerfinance.db.bak`.
-- O sync automático roda enquanto a janela estiver aberta. Log em
-  `%LOCALAPPDATA%\ManagerFinance\logs\app.log`.
-- Mudou o código? Rode o script de novo.
+- O sync automático roda enquanto a janela estiver aberta.
+- Mudou o código? Rode o script de novo (com o app fechado).
 
 ## 🧭 Como usar
 
@@ -185,6 +212,10 @@ ao mesmo tempo).
 - **Visão geral**: livre agora, previsão do ciclo, receitas x despesas, reserva de
   emergência, gastos fixos/assinaturas detectados, parcelas futuras e um score de saúde
   financeira (poupança 40 + reserva 30 + gastos fixos 30).
+- **Avisos por e-mail** (Perfil › Avisos por e-mail): fim e resumo do ciclo, meio do ciclo,
+  fatura vencendo, compra fora da rotina, gasto demais numa área, desejo que cabe no orçamento e
+  outros. Saem de uma conta Gmail com senha de app (configurada no Perfil, guardada
+  criptografada), a cada 15 minutos enquanto o Finora estiver aberto; silêncio das 22h às 8h.
 - **Assistente**: precisa do [Ollama](https://ollama.com) rodando na máquina; detalhes em
   [`docs/assistente-local.md`](docs/assistente-local.md).
 

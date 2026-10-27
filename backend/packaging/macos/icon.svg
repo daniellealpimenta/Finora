@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Ícone do .app: o mesmo de frontend/src/app/icon.svg, na grade da Apple (824 px com sombra) -->
+  <defs>
+    <filter id="s" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <g filter="url(#s)">
+    <svg x="100" y="100" width="824" height="824" viewBox="0 0 64 64">
+      <rect width="64" height="64" rx="14.4" fill="#141a20"/>
+      <circle cx="32" cy="32" r="23" fill="#d2ac6a"/>
+      <circle cx="32" cy="32" r="18.5" fill="none" stroke="#6b5221" stroke-width="1.6" opacity="0.45"/>
+      <ellipse cx="32" cy="33" rx="12.5" ry="9.4" fill="#ebcf98" stroke="#6b5221" stroke-width="2.6"/>
+      <ellipse cx="27.4" cy="33" rx="2.2" ry="3.4" fill="#6b5221"/>
+      <ellipse cx="36.6" cy="33" rx="2.2" ry="3.4" fill="#6b5221"/>
+    </svg>
+  </g>
+</svg>

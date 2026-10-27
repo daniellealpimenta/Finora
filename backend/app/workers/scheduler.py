@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from app.core.config import get_settings
 from app.db.models import Connection
 from app.db.session import SessionLocal
+from app.services.notify import outbox as notify_outbox
 from app.services.sync import run_sync
 from app.services.wishlist import refresh_prices
 
@@ -61,6 +62,12 @@ class SyncScheduler:
                     refresh_prices(db)
             except Exception:
                 logger.exception("Erro ao atualizar preços da lista de desejos")
+            try:
+                # Avisos por e-mail: depois do sync, para já pegar as novidades dele
+                with SessionLocal() as db:
+                    notify_outbox.run(db)
+            except Exception:
+                logger.exception("Erro nos avisos por e-mail")
             # Reavalia a cada 15 min; só sincroniza quando o intervalo venceu
             self._stop.wait(15 * 60)
 

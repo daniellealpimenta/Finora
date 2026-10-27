@@ -8,6 +8,8 @@ from platformdirs import user_data_dir
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# O app se chama Finora, mas a pasta de dados mantém o nome antigo (ManagerFinance): é onde
+# já estão o banco e o .env, e trocar o nome deixaria tudo para trás.
 _DATA_DIR = Path(user_data_dir("ManagerFinance", appauthor=False))
 
 
@@ -46,6 +48,13 @@ class Settings(BaseSettings):
     # Assistente: Ollama rodando nesta máquina. Só aceita endereço local (validador abaixo),
     # para nenhum dado financeiro sair do computador, nem com um .env errado.
     llm_base_url: str = "http://127.0.0.1:11434"
+
+    # Avisos por e-mail: a conta de envio fica no Perfil (criptografada no banco). Estes só
+    # valem enquanto o Perfil não tiver uma, como reserva do modo web.
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
 
     @field_validator("database_url")
     @classmethod

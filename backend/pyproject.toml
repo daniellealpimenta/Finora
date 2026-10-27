@@ -1,7 +1,7 @@
 [project]
 name = "managerfinance-backend"
 version = "0.1.0"
-description = "API do ManagerFinance: ingestão de transações via Pluggy, categorização e analytics"
+description = "API do Finora: ingestão de transações via Pluggy, categorização e analytics"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
@@ -17,6 +17,7 @@ dependencies = [
     "pyotp>=2.9",
     "cryptography>=43",
     "python-multipart>=0.0.9",
+    "segno>=1.6.6",
 ]
 
 [dependency-groups]
@@ -25,7 +26,7 @@ dev = [
     "respx>=0.21",
     "ruff>=0.6",
 ]
-# Só para gerar o ManagerFinance.exe (scripts/build-desktop.ps1)
+# Só para gerar o programa: Finora.exe e Finora.app (scripts/build-desktop.ps1 e .sh)
 desktop = [
     "pyinstaller>=6.10",
     "pywebview>=5.3",
