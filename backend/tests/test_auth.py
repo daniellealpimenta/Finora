@@ -22,7 +22,7 @@ def totp_secret(db) -> str:
 
 
 def test_health(client):
-    assert client.get("/health").json() == {"status": "ok"}
+    assert client.get("/health").json()["status"] == "ok"
 
 
 def test_login_with_totp_and_me(client, totp_secret):

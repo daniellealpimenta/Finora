@@ -67,6 +67,23 @@ export async function login(email: string, password: string, totpCode?: string) 
 
 export type Me = { id: number; email: string };
 
+/** Primeira configuração (tela /bem-vindo). `step` é onde a pessoa parou. */
+export type SetupStatus = {
+  has_user: boolean;
+  pluggy_configured: boolean;
+  has_connection: boolean;
+  step: string | null;
+  done: boolean;
+  /** Desde quando a Pluggy recusa o acesso (null = tudo certo) */
+  pluggy_alert_since: string | null;
+};
+
+export type SetupUser = {
+  access_token: string;
+  totp_secret: string | null;
+  totp_uri: string | null;
+};
+
 export type AccountType = "CHECKING" | "SAVINGS" | "CREDIT_CARD" | "INVESTMENT" | "LOAN" | "OTHER";
 export type CategoryKind = "EXPENSE" | "INCOME" | "TRANSFER";
 
@@ -245,6 +262,8 @@ export type SyncStatus = {
     deleted: number;
     errors: string[];
   } | null;
+  /** A Pluggy recusou o acesso (ex.: fim do período de teste). `detail` é o texto da Pluggy. */
+  pluggy_alert: { since: string; detail: string } | null;
 };
 
 export type Category = { id: number; key: string | null; name: string; kind: CategoryKind };

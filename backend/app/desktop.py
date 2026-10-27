@@ -12,11 +12,10 @@ import time
 import urllib.request
 from pathlib import Path
 
-from platformdirs import user_data_dir
+from app.core.config import DATA_DIR
 
 PORT = 8765  # o frontend é gerado com esta porta (scripts/build-desktop.ps1)
 URL = f"http://127.0.0.1:{PORT}"
-DATA_DIR = Path(user_data_dir("ManagerFinance", appauthor=False))
 
 logger = logging.getLogger("desktop")
 
@@ -100,12 +99,10 @@ def main() -> None:
     server = thread = None
     if not _is_running():
         try:
-            from app.core.config import get_settings
+            from app.core.config import ensure_local_secrets
 
-            if not get_settings().field_encryption_key:
-                raise RuntimeError(
-                    f"Configuração não encontrada. Copie o .env do projeto para {DATA_DIR / '.env'}"
-                )
+            # O resto (senha, chaves da Pluggy) o passo a passo do app pede na primeira vez
+            ensure_local_secrets()
             _migrate()
             server, thread = _start_server()
         except Exception as exc:
@@ -113,6 +110,8 @@ def main() -> None:
             _alert(str(exc))
             sys.exit(1)
 
+    # meu.pluggy.ai, dashboard.pluggy.ai etc. abrem no navegador, não dentro do app
+    webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
     webview.create_window("ManagerFinance", URL, width=1400, height=900, min_size=(1024, 680))
     webview.start()
 

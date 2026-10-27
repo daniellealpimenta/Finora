@@ -21,6 +21,15 @@ class PluggyError(RuntimeError):
     pass
 
 
+class PluggyAccessError(PluggyError):
+    """A Pluggy recusou o acesso (401/403): chave errada, aplicação apagada ou conta bloqueada.
+    Vale para todos os bancos, então o sync para e avisa em vez de tentar um por um."""
+
+
+class PluggyCredentialsError(PluggyAccessError):
+    """Client ID/Secret recusados pela Pluggy."""
+
+
 class PluggyClient:
     def __init__(
         self,
@@ -55,6 +64,10 @@ class PluggyClient:
         resp = self._http.post(
             "/auth", json={"clientId": self._client_id, "clientSecret": self._client_secret}
         )
+        if 400 <= resp.status_code < 500:
+            raise PluggyCredentialsError(
+                f"Falha na autenticação Pluggy ({resp.status_code}): {resp.text}"
+            )
         if resp.status_code != 200:
             raise PluggyError(f"Falha na autenticação Pluggy ({resp.status_code}): {resp.text}")
         self._api_key = resp.json()["apiKey"]
@@ -64,9 +77,15 @@ class PluggyClient:
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         headers = {"X-API-KEY": self._ensure_api_key()}
         resp = self._http.request(method, path, headers=headers, **kwargs)
+        if resp.status_code in (401, 403):
+            raise PluggyAccessError(f"{method} {path} -> {resp.status_code}: {resp.text}")
         if resp.status_code >= 400:
             raise PluggyError(f"{method} {path} -> {resp.status_code}: {resp.text}")
         return resp.json()
+
+    def check_credentials(self) -> None:
+        """Lança PluggyCredentialsError se a Pluggy recusar o Client ID/Secret."""
+        self._ensure_api_key()
 
     # --- endpoints ------------------------------------------------------------
 

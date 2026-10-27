@@ -18,8 +18,9 @@ import { useEffect, useState } from "react";
 import { AssistantProvider } from "@/components/assistant/context";
 import { AssistantFab } from "@/components/assistant/fab";
 import { CoinMark, SoundToggle, ThemeToggle, Toaster } from "@/components/chrome";
+import { Pila } from "@/components/pila";
 import { IconButton, cx, tone } from "@/components/ui";
-import { api, setToken, type Me } from "@/lib/api";
+import { api, setToken, type Me, type SetupStatus } from "@/lib/api";
 
 // Cada seção tem a sua cor de detalhe no ícone (MASTER.md, "Seções do menu"). `mobile: false`
 // fica fora da barra inferior do celular (6 itens já ocupam a largura) e vira botão no topo.
@@ -71,10 +72,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // No .exe (export estático, trailingSlash) o caminho chega como "/transacoes/"
   const pathname = usePathname().replace(/(.)\/$/, "$1");
   const [me, setMe] = useState<Me | null>(null);
+  const [pluggyBlocked, setPluggyBlocked] = useState(false);
 
   useEffect(() => {
     api<Me>("/auth/me")
-      .then(setMe)
+      .then(async (user) => {
+        // Configuração pela metade (fechou o app no meio): continua de onde parou
+        const setup = await api<SetupStatus>("/setup/status");
+        if (!setup.done) return router.replace("/bem-vindo");
+        setPluggyBlocked(Boolean(setup.pluggy_alert_since));
+        setMe(user);
+      })
       .catch(() => router.replace("/login"));
   }, [router]);
 
@@ -129,6 +137,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </header>
+
+        {pluggyBlocked && pathname !== "/contas" && (
+          <div role="status" style={tone("var(--warning)")} className="tint">
+            <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm sm:px-6">
+              <Pila mood="worried" size={32} />
+              <span className="font-semibold">A Pluggy parou de liberar os dados dos seus bancos.</span>
+              <span className="text-muted">O que já está aqui continua.</span>
+              <Link href="/contas" className="font-semibold text-[var(--c)] underline underline-offset-4">
+                Ver o que fazer
+              </Link>
+            </div>
+          </div>
+        )}
 
         <main className="mx-auto max-w-6xl px-4 pt-6 pb-44 sm:px-6 sm:pt-8 sm:pb-28">
           {children}

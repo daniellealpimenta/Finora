@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     Account,
     AccountType,
+    AppSetting,
     CardBill,
     Category,
     CategoryKind,
@@ -37,7 +38,7 @@ from app.db.models import (
     TransactionSource,
     TransactionStatus,
 )
-from app.integrations.pluggy.client import PluggyClient, PluggyError
+from app.integrations.pluggy.client import PluggyAccessError, PluggyClient, PluggyError
 from app.services import yields
 from app.services.cards import short_bank_name
 from app.services.categories import Categorizer, ensure_categories, link_transfers
@@ -380,24 +381,71 @@ def sync_all(db: Session, connection_ids: list[int] | None = None) -> SyncResult
     if not connections:
         return result
 
-    with PluggyClient() as pluggy:
-        for connection in connections:
-            try:
-                sync_connection(db, pluggy, connection, result)
-                db.commit()
-            except Exception as exc:  # uma conexão com erro não derruba as outras
-                db.rollback()
-                logger.exception("Falha ao sincronizar conexão %s", connection.id)
-                message = f"{connection.institution_name}: {exc}"[:1024]
-                connection.last_sync_error = message
-                db.commit()
-                result.errors.append(message)
+    try:
+        with PluggyClient() as pluggy:
+            _sync_connections(db, pluggy, connections, result)
+    except PluggyAccessError as exc:
+        db.rollback()
+        logger.warning("A Pluggy recusou o acesso: %s", exc)
+        set_pluggy_alert(db, str(exc))
+        result.errors.append(f"A Pluggy recusou o acesso: {exc}"[:1024])
+        return result
+    clear_pluggy_alert(db)
     # Pares (fatura paga na conta x pagamento no cartão) podem cruzar conexões
     link_transfers(db)
     # Saldo do dia de cada aplicação: é a diferença entre dias que mostra o rendimento diário
     yields.record_snapshots(db, date.today())
     db.commit()
     return result
+
+
+def _sync_connections(
+    db: Session, pluggy: PluggyClient, connections: list[Connection], result: SyncResult
+) -> None:
+    for connection in connections:
+        try:
+            sync_connection(db, pluggy, connection, result)
+            db.commit()
+        except PluggyAccessError:
+            raise  # vale para todas: sync_all para e avisa
+        except Exception as exc:  # uma conexão com erro não derruba as outras
+            db.rollback()
+            logger.exception("Falha ao sincronizar conexão %s", connection.id)
+            message = f"{connection.institution_name}: {exc}"[:1024]
+            connection.last_sync_error = message
+            db.commit()
+            result.errors.append(message)
+
+
+# --- acesso recusado pela Pluggy ---------------------------------------------
+# Fica gravado (sobrevive a fechar o app) até um sync dar certo ou a chave ser trocada.
+# Pelo README do Meu Pluggy, o fim do teste (15 dias) não corta os dados; isto cobre aplicação
+# apagada, chave trocada ou mudança da Pluggy. O texto dela fica em `detail` para diagnóstico.
+
+ALERT_KEY = "pluggy_alert"
+
+
+def get_pluggy_alert(db: Session) -> dict | None:
+    setting = db.get(AppSetting, ALERT_KEY)
+    return setting.value if setting else None
+
+
+def set_pluggy_alert(db: Session, detail: str) -> None:
+    setting = db.get(AppSetting, ALERT_KEY)
+    if setting is None:
+        since = datetime.now(UTC).isoformat()
+        db.add(AppSetting(key=ALERT_KEY, value={"since": since, "detail": detail[:1024]}))
+    else:
+        # Mantém a data da primeira recusa
+        setting.value = {**setting.value, "detail": detail[:1024]}
+    db.commit()
+
+
+def clear_pluggy_alert(db: Session) -> None:
+    setting = db.get(AppSetting, ALERT_KEY)
+    if setting is not None:
+        db.delete(setting)
+        db.commit()
 
 
 # --- estado e execução em segundo plano -------------------------------------

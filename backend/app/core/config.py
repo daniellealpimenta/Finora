@@ -1,5 +1,7 @@
 import ipaddress
+import os
 import re
+import secrets
 from functools import lru_cache
 from pathlib import Path, PureWindowsPath
 from urllib.parse import urlsplit
@@ -8,20 +10,22 @@ from platformdirs import user_data_dir
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_DATA_DIR = Path(user_data_dir("ManagerFinance", appauthor=False))
+# MANAGERFINANCE_DATA_DIR permite testar uma instalação do zero sem tocar nos dados reais
+DATA_DIR = Path(
+    os.environ.get("MANAGERFINANCE_DATA_DIR") or user_data_dir("ManagerFinance", appauthor=False)
+)
+LOCAL_ENV = DATA_DIR / ".env"
 
 
 class Settings(BaseSettings):
     # O .exe não roda dentro do projeto: lê o .env da pasta de dados. O último arquivo
     # vence, então no modo web o .env do projeto continua mandando.
-    model_config = SettingsConfigDict(
-        env_file=(_DATA_DIR / ".env", ".env", "../.env"), extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=(LOCAL_ENV, ".env", "../.env"), extra="ignore")
 
     environment: str = "development"
     # Fora da pasta do projeto (que pode estar sincronizada com OneDrive/iCloud):
     # Windows: %LOCALAPPDATA%\ManagerFinance; macOS: ~/Library/Application Support/ManagerFinance
-    database_url: str = f"sqlite:///{(_DATA_DIR / 'managerfinance.db').as_posix()}"
+    database_url: str = f"sqlite:///{(DATA_DIR / 'managerfinance.db').as_posix()}"
 
     # Auth
     jwt_secret: str = "change-me"
@@ -79,3 +83,45 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def _read_local_env() -> dict[str, str]:
+    if not LOCAL_ENV.is_file():
+        return {}
+    values = {}
+    for line in LOCAL_ENV.read_text(encoding="utf-8").splitlines():
+        key, sep, value = line.partition("=")
+        if sep and not line.lstrip().startswith("#"):
+            values[key.strip()] = value.strip()
+    return values
+
+
+def save_local_settings(updates: dict[str, str]) -> None:
+    """Grava chaves no .env da pasta de dados (o que o programa instalado lê), mantendo as
+    outras linhas, e recarrega as configurações."""
+    lines = LOCAL_ENV.read_text(encoding="utf-8").splitlines() if LOCAL_ENV.is_file() else []
+    pending = dict(updates)
+    for i, line in enumerate(lines):
+        key = line.partition("=")[0].strip()
+        if key in pending and not line.lstrip().startswith("#"):
+            lines[i] = f"{key}={pending.pop(key)}"
+    lines += [f"{key}={value}" for key, value in pending.items()]
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    LOCAL_ENV.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    get_settings.cache_clear()
+
+
+def ensure_local_secrets() -> None:
+    """Primeira vez que o programa abre: gera o segredo do login e a chave de criptografia.
+    Nunca sobrescreve (trocar a chave deixaria ilegível o que já está no banco)."""
+    from cryptography.fernet import Fernet
+
+    settings = get_settings()
+    current = _read_local_env()
+    missing = {}
+    if not current.get("JWT_SECRET") and settings.jwt_secret == "change-me":
+        missing["JWT_SECRET"] = secrets.token_urlsafe(48)
+    if not current.get("FIELD_ENCRYPTION_KEY") and not settings.field_encryption_key:
+        missing["FIELD_ENCRYPTION_KEY"] = Fernet.generate_key().decode()
+    if missing:
+        save_local_settings(missing)

@@ -2,13 +2,13 @@
 
 import { Eye, EyeOff, LockKeyhole, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { CoinMark, ThemeToggle } from "@/components/chrome";
 import { Guilloche } from "@/components/guilloche";
 import { Pila, type PilaMood } from "@/components/pila";
 import { Button, ErrorNote, cx, inputClass, tone } from "@/components/ui";
-import { ApiError, login } from "@/lib/api";
+import { ApiError, api, login, type SetupStatus } from "@/lib/api";
 import { usePageEnter } from "@/lib/motion";
 
 export default function LoginPage() {
@@ -23,6 +23,15 @@ export default function LoginPage() {
   const root = useRef<HTMLElement>(null);
 
   usePageEnter(root, true);
+
+  // Instalação nova (ninguém cadastrado ainda): vai para o passo a passo
+  useEffect(() => {
+    api<SetupStatus>("/setup/status")
+      .then((s) => {
+        if (!s.has_user) router.replace("/bem-vindo");
+      })
+      .catch(() => {});
+  }, [router]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();

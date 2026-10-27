@@ -41,3 +41,13 @@ def test_auth_failure_raises():
 
 def test_connect_token_requires_auth(client):
     assert client.post("/pluggy/connect-token").status_code == 401
+
+
+@respx.mock
+def test_forbidden_data_request_is_access_error():
+    from app.integrations.pluggy.client import PluggyAccessError
+
+    respx.post(f"{BASE}/auth").mock(return_value=httpx.Response(200, json={"apiKey": "k"}))
+    respx.get(f"{BASE}/items/item-1").mock(return_value=httpx.Response(403, json={"message": "no"}))
+    with PluggyClient() as pluggy, pytest.raises(PluggyAccessError):
+        pluggy.get_item("item-1")

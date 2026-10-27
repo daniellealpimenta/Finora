@@ -28,3 +28,6 @@ Thumbs.db
 # Build do .exe (PyInstaller)
 backend/build/
 backend/dist/
+
+# Instalador (Inno Setup)
+/dist/

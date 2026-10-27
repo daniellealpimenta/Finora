@@ -10,7 +10,7 @@ from app.api.deps import CurrentUser, DbSession
 from app.db.models import Account, AccountType, Connection
 from app.db.session import SessionLocal
 from app.integrations.pluggy.client import PluggyClient, PluggyError
-from app.services.sync import SyncResult, run_sync, state
+from app.services.sync import SyncResult, get_pluggy_alert, run_sync, state
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,8 @@ class SyncStatus(BaseModel):
     last_finished_at: datetime | None
     last_error: str | None
     last_result: dict | None
+    # A Pluggy recusou o acesso: {"since", "detail"} (ex.: fim do período de teste)
+    pluggy_alert: dict | None = None
 
 
 @router.get("/connections", response_model=list[ConnectionOut])
@@ -130,7 +132,7 @@ def update_account(account_id: int, body: AccountUpdate, _: CurrentUser, db: DbS
     return account
 
 
-def _sync_status() -> SyncStatus:
+def _sync_status(db: DbSession) -> SyncStatus:
     result: SyncResult | None = state.last_result
     return SyncStatus(
         running=state.running,
@@ -138,16 +140,17 @@ def _sync_status() -> SyncStatus:
         last_finished_at=state.last_finished_at,
         last_error=state.last_error,
         last_result=result.__dict__ if result else None,
+        pluggy_alert=get_pluggy_alert(db),
     )
 
 
 @router.post("/sync", response_model=SyncStatus, status_code=status.HTTP_202_ACCEPTED)
-def sync_now(_: CurrentUser, background: BackgroundTasks) -> SyncStatus:
+def sync_now(_: CurrentUser, db: DbSession, background: BackgroundTasks) -> SyncStatus:
     if not state.running:
         background.add_task(run_sync, SessionLocal)
-    return _sync_status()
+    return _sync_status(db)
 
 
 @router.get("/sync/status", response_model=SyncStatus)
-def sync_status(_: CurrentUser) -> SyncStatus:
-    return _sync_status()
+def sync_status(_: CurrentUser, db: DbSession) -> SyncStatus:
+    return _sync_status(db)

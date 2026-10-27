@@ -6,6 +6,7 @@ import {
   FileUp,
   FlaskConical,
   HandCoins,
+  KeyRound,
   Landmark,
   PiggyBank,
   Plug,
@@ -29,6 +30,7 @@ import {
   Pill,
   STATUS_COLOR,
   cx,
+  tone,
   type Status,
 } from "@/components/ui";
 import { Pila } from "@/components/pila";
@@ -44,6 +46,7 @@ import {
 import { cycleRange, type CycleInfo } from "@/lib/cycle";
 import { ACCOUNT_TYPE_LABEL, dateTime, money, percent, shortDate } from "@/lib/format";
 import { FULL, gsap, motion, useGSAP, usePageEnter } from "@/lib/motion";
+import { openPluggyConnect } from "@/lib/pluggy-connect";
 import { notify, setSyncing } from "@/lib/signals";
 
 const STATUS: Record<string, [Status, string]> = {
@@ -62,11 +65,6 @@ const ACCOUNT_ICON: Record<AccountType, [LucideIcon, string]> = {
   LOAN: [HandCoins, "var(--cat-fin)"],
   OTHER: [Landmark, "var(--cat-fin)"],
 };
-
-// Aplicação Pluggy em trial só cria itens do sandbox e do MeuPluggy
-// (bancos reais -> 400 TRIAL_CLIENT_ITEM_CREATE_NOT_ALLOWED). Os bancos reais
-// são conectados em https://meu.pluggy.ai e chegam aqui pelo conector MeuPluggy.
-const MEU_PLUGGY_CONNECTOR_ID = 200;
 
 export default function ContasPage() {
   const [connections, setConnections] = useState<Connection[] | null>(null);
@@ -180,28 +178,16 @@ export default function ContasPage() {
     setError(null);
     setConnecting(true);
     try {
-      const { access_token } = await api<{ access_token: string }>("/pluggy/connect-token", {
-        method: "POST",
-      });
-      // Carregado só no navegador (o SDK usa window)
-      const { PluggyConnect } = await import("pluggy-connect-sdk");
-      const widget = new PluggyConnect({
-        connectToken: access_token,
-        includeSandbox: sandbox,
-        ...(sandbox ? {} : { connectorIds: [MEU_PLUGGY_CONNECTOR_ID] }),
-        onSuccess: async ({ item }) => {
-          await api<Connection>("/connections", {
-            method: "POST",
-            body: JSON.stringify({ item_id: item.id }),
-          });
-          notify(`${item.connector?.name ?? "Banco"} conectado. Sincronizando…`);
+      await openPluggyConnect({
+        sandbox,
+        onConnected: async (_, institution) => {
+          notify(`${institution} conectado. Sincronizando…`);
           await load();
           setSync((s) => (s ? { ...s, running: true } : s));
         },
-        onError: ({ message }) => setError(`Pluggy: ${message}`),
+        onError: setError,
         onClose: () => setConnecting(false),
       });
-      await widget.init();
     } catch (e) {
       setConnecting(false);
       setError(e instanceof Error ? e.message : String(e));
@@ -288,7 +274,10 @@ export default function ContasPage() {
           </div>
         )}
 
+        {sync?.pluggy_alert && <PluggyAlert alert={sync.pluggy_alert} />}
+
         {cycle && <CycleStart cycle={cycle} onSave={saveCycleStart} />}
+        <PluggyKeys />
 
         {connections && connections.length === 0 && manual.length === 0 && (
           <Card data-enter>
@@ -660,5 +649,116 @@ function ClosingDay({
         Ajustar
       </button>
     </div>
+  );
+}
+
+/** Trocar o Client ID/Secret da Pluggy (os mesmos do passo a passo). A API testa antes de salvar. */
+function PluggyKeys() {
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <Card data-enter className="grid gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <IconBadge icon={KeyRound} color="var(--cat-move)" />
+        <div className="min-w-0 flex-1">
+          <h2 className="font-semibold">Chave da Pluggy</h2>
+          <p className="text-xs text-muted">
+            Client ID e Client Secret da sua aplicação em dashboard.pluggy.ai. Ficam só neste computador.
+          </p>
+        </div>
+        {!editing && (
+          <Button variant="ghost" onClick={() => setEditing(true)}>
+            Trocar a chave
+          </Button>
+        )}
+      </div>
+      {editing && (
+        <form
+          className="grid gap-2 sm:pl-12"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const form = new FormData(e.currentTarget);
+            setBusy(true);
+            setError(null);
+            try {
+              await api("/setup/pluggy", {
+                method: "PUT",
+                body: JSON.stringify({ client_id: form.get("client_id"), client_secret: form.get("client_secret") }),
+              });
+              notify("Chave da Pluggy salva.");
+              setEditing(false);
+            } catch (err) {
+              setError(err instanceof Error ? err.message : String(err));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <div className="grid gap-2 sm:grid-cols-2">
+            <input name="client_id" required autoFocus placeholder="Client ID" aria-label="Client ID" className={inputClass} />
+            <input
+              name="client_secret"
+              type="password"
+              required
+              autoComplete="off"
+              placeholder="Client Secret"
+              aria-label="Client Secret"
+              className={inputClass}
+            />
+          </div>
+          {error && <ErrorNote>{error}</ErrorNote>}
+          <div className="flex gap-2">
+            <Button type="submit" variant="primary" disabled={busy} className="min-h-9">
+              {busy ? "Testando…" : "Testar e salvar"}
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setEditing(false)} className="min-h-9">
+              Cancelar
+            </Button>
+          </div>
+        </form>
+      )}
+    </Card>
+  );
+}
+
+/** A Pluggy recusou o acesso: o caso esperado é o fim do período de teste da conta grátis. */
+function PluggyAlert({ alert }: { alert: { since: string; detail: string } }) {
+  return (
+    <Card data-enter className="grid gap-4 border-[var(--c)]" style={tone("var(--warning)")}>
+      <div className="flex flex-wrap items-start gap-4">
+        <Pila mood="worried" size={72} />
+        <div className="grid min-w-0 flex-1 gap-1.5">
+          <h2 className="font-display text-lg font-bold">A Pluggy está recusando o acesso</h2>
+          <p className="text-sm text-muted">
+            Desde {dateTime(alert.since)} ela não libera dados novos dos seus bancos. Pela documentação da Pluggy, o
+            fim do período de teste não corta os dados; então pode ser a aplicação apagada no painel, a chave trocada ou
+            uma mudança da própria Pluggy. Tudo o que já chegou continua aqui.
+          </p>
+        </div>
+      </div>
+      <ol className="grid list-decimal gap-1.5 pl-5 text-sm marker:font-semibold marker:text-[var(--c)]">
+        <li>
+          Veja o status da sua conta em{" "}
+          <a href="https://dashboard.pluggy.ai" target="_blank" rel="noreferrer" className="font-semibold underline underline-offset-4">
+            dashboard.pluggy.ai
+          </a>
+          .
+        </li>
+        <li>
+          Se tiver uma chave nova (outra aplicação ou um plano), use <strong>Trocar a chave</strong> logo abaixo e depois{" "}
+          <strong>Sincronizar agora</strong>.
+        </li>
+        <li>
+          Enquanto isso, dá para trazer os extratos com <strong>Importar OFX</strong>, baixando o arquivo no app ou
+          site do banco.
+        </li>
+      </ol>
+      <details className="text-xs text-muted">
+        <summary className="cursor-pointer">Detalhe técnico (o que a Pluggy respondeu)</summary>
+        <code className="mt-1.5 block rounded-chip bg-surface-2 p-2 break-all">{alert.detail}</code>
+      </details>
+    </Card>
   );
 }

@@ -57,6 +57,36 @@ categoriza os gastos e mostra, ciclo a ciclo, quanto dá para gastar sem apertar
 | 💬 **Assistente** | Chat com o Pila sobre os seus números, com LLM local |
 | 📄 **Importar OFX** | Para bancos sem Open Finance; reimportar não duplica |
 
+## ⬇️ Baixar e instalar (Windows)
+
+Para usar, sem precisar programar:
+
+1. Baixe o `ManagerFinance-Setup-<versão>.exe` em
+   [Releases](https://github.com/daniellealpimenta/ManagerFinance/releases/latest) e abra.
+2. O Windows deve mostrar "O Windows protegeu o computador" (o instalador não é assinado).
+   Clique em **Mais informações → Executar assim mesmo**.
+3. Não pede senha de administrador. No fim, abra o ManagerFinance.
+
+Na primeira vez, o app mostra um **passo a passo** com o Pila:
+
+| | |
+|---|---|
+| 🔑 **Sua senha** | Protege o app neste computador (código do celular opcional) |
+| 🏦 **Meu Pluggy** | Conta grátis em [meu.pluggy.ai](https://meu.pluggy.ai), onde você autoriza seus bancos pelo Open Finance |
+| 🗝️ **Chave da Pluggy** | Conta grátis no [painel da Pluggy](https://dashboard.pluggy.ai) e uma aplicação; o app testa a chave antes de salvar |
+| 🔌 **Conectar** | Liga o Meu Pluggy ao app, uma vez por banco, e traz até 12 meses de histórico |
+| 🗓️ **Ciclo** e 💬 **Assistente** | Opcionais: dia em que seu mês começa e o chat com o Pila (Ollama) |
+
+Dá para fechar no meio: o app lembra onde você parou.
+
+> [!IMPORTANT]
+> A conta no painel da Pluggy começa com **15 dias de teste**. Pela
+> [documentação do Meu Pluggy](https://github.com/pluggyai/meu-pluggy), os dados continuam
+> chegando depois, mas conecte **todos os seus bancos** dentro desse prazo.
+
+Seus dados ficam em `%LOCALAPPDATA%\ManagerFinance` (banco, chaves e logs). Desinstalar
+mantém essa pasta, a menos que você peça para apagar.
+
 ## 📸 Telas
 
 <table>
@@ -98,7 +128,9 @@ docs/       notas de arquitetura (assistente local) e prints
 scripts/    build do programa para Windows (.exe)
 ```
 
-## 🚀 Primeiros passos
+## 🛠️ Para desenvolvedores
+
+Rodar a partir do código, em modo web (ou gerar o `.exe` você mesmo).
 
 ### 1. Configuração
 
@@ -161,8 +193,11 @@ ao mesmo tempo).
 .\scripts\build-desktop.ps1      # gera o .exe e instala, com atalho no Menu Iniciar
 ```
 
-- Uma vez: copie o `.env` do projeto para `%LOCALAPPDATA%\ManagerFinance\.env`
-  (o programa não roda dentro da pasta do projeto).
+- Na primeira vez, o programa gera sozinho `JWT_SECRET` e `FIELD_ENCRYPTION_KEY` em
+  `%LOCALAPPDATA%\ManagerFinance\.env` e pede o resto (senha, chave da Pluggy) no passo a passo.
+  Quem já usa o modo web pode copiar o `.env` do projeto para lá: ele nunca é sobrescrito.
+- Para testar uma instalação do zero sem tocar nos seus dados, aponte
+  `MANAGERFINANCE_DATA_DIR` para uma pasta vazia.
 - Fica instalado em `%LOCALAPPDATA%\Programs\ManagerFinance` (fora do OneDrive). Para fixar
   na barra de tarefas: Menu Iniciar → ManagerFinance → botão direito → Fixar na barra de
   tarefas. Reinstalar (rodar o script de novo, com o app fechado) mantém o atalho.
@@ -170,6 +205,19 @@ ao mesmo tempo).
 - O sync automático roda enquanto a janela estiver aberta. Log em
   `%LOCALAPPDATA%\ManagerFinance\logs\app.log`.
 - Mudou o código? Rode o script de novo.
+
+### 📦 Publicar uma versão
+
+O instalador (`scripts/installer.iss`, Inno Setup) é gerado pelo GitHub Actions a cada tag:
+
+```bash
+# antes: a mesma versão em backend/app/__init__.py e backend/pyproject.toml
+git tag v0.3.0 && git push --tags
+```
+
+O workflow `.github/workflows/release.yml` roda os testes, gera o programa
+(`build-desktop.ps1 -NoInstall`), o `ManagerFinance-Setup-<versão>.exe` e publica no Releases.
+Tags com `-` (ex.: `v0.3.0-rc1`) saem como pré-lançamento.
 
 ## 🧭 Como usar
 
@@ -212,5 +260,10 @@ cd frontend && npm run lint && npm run build
 - [x] Dashboards e índices (taxa de poupança, reserva de emergência, comprometimento de renda…)
 - [x] Ciclo da fatura, cofrinhos, cartões, lista de desejos e previsão do ciclo
 - [x] Assistente local (Ollama): chat com ferramentas e padrões encontrados
+- [x] Instalador para Windows com passo a passo da primeira configuração
 - [ ] Sugestões de categoria pelo LLM, com confirmação
 - [ ] 📱 App iOS (SwiftUI) usando esta mesma API
+
+## 📄 Licença
+
+[MIT](LICENSE). Use, modifique e compartilhe à vontade.

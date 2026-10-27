@@ -38,3 +38,13 @@ def test_llm_url_refuses_anything_off_the_machine(url):
     # Dados financeiros não saem do computador, nem com um .env errado
     with pytest.raises(ValueError, match="esta máquina"):
         Settings(llm_base_url=url)
+
+
+def test_version_matches_pyproject():
+    import tomllib
+    from pathlib import Path
+
+    from app import __version__
+
+    pyproject = tomllib.loads((Path(__file__).parent.parent / "pyproject.toml").read_text("utf-8"))
+    assert pyproject["project"]["version"] == __version__

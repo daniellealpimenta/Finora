@@ -22,6 +22,15 @@ import { Button, IconButton, cx } from "./ui";
  */
 const SEEN_KEY = "mf_recap_seen";
 
+/** Instalação nova: o ciclo que fechou antes de o app existir não tem resumo para mostrar. */
+export function skipRecapBefore(currentKey: string) {
+  try {
+    localStorage.setItem(SEEN_KEY, shiftMonth(currentKey, -1));
+  } catch {
+    /* segue */
+  }
+}
+
 /** Ciclo que acabou de fechar e se o fechamento dele já foi visto. */
 export function useRecap(currentKey: string | null) {
   const closedKey = currentKey ? shiftMonth(currentKey, -1) : null;

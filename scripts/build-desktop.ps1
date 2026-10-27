@@ -1,5 +1,8 @@
 # Gera o programa para Windows: backend\dist\ManagerFinance\ManagerFinance.exe
 # O modo web (uvicorn + npm run dev) continua igual; isto só empacota o mesmo código.
+#   .\scripts\build-desktop.ps1             gera e instala nesta máquina
+#   .\scripts\build-desktop.ps1 -NoInstall  só gera (o instalador e o GitHub Actions usam assim)
+param([switch]$NoInstall)
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 
@@ -26,6 +29,11 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "pyinstaller falhou" }
 } finally {
     Pop-Location
+}
+
+if ($NoInstall) {
+    Write-Host "`nGerado em $root\backend\dist\ManagerFinance"
+    exit 0
 }
 
 # 3. Instala para o usuário, como os outros apps (fora do OneDrive), com atalho no Menu Iniciar

@@ -469,3 +469,66 @@ def test_pots_api_create_rename_goal_move_and_delete(client, db, connection, aut
         ).status_code
         == 404
     )
+
+
+def test_pluggy_refusing_access_stops_sync_and_raises_alert(db, connection, monkeypatch):
+    from app.integrations.pluggy.client import PluggyAccessError
+    from app.services.sync import get_pluggy_alert
+
+    calls = []
+
+    class Expired(FakePluggy):
+        def get_item(self, item_id):
+            calls.append(item_id)
+            raise PluggyAccessError("POST /auth -> 403: trial expired")
+
+    db.add(Connection(external_id="item-2", institution_name="Outro", status="UPDATED"))
+    db.commit()
+    use_fake(monkeypatch, Expired([], {}))
+    result = sync_all(db)
+
+    assert calls == ["item-1"]  # não tenta banco por banco
+    assert "recusou o acesso" in result.errors[0]
+    alert = get_pluggy_alert(db)
+    assert "trial expired" in alert["detail"]
+    since = alert["since"]
+
+    # Recusa de novo: mantém a data da primeira vez
+    sync_all(db)
+    assert get_pluggy_alert(db)["since"] == since
+
+    # Voltou a funcionar: o aviso some
+    use_fake(monkeypatch, FakePluggy([CHECKING], {}))
+    sync_all(db)
+    assert get_pluggy_alert(db) is None
+
+
+def test_pluggy_alert_shows_in_status_and_clears_with_new_key(
+    client, db, auth_headers, monkeypatch
+):
+    from app.api.routes import setup as setup_routes
+    from app.services.sync import set_pluggy_alert
+
+    set_pluggy_alert(db, "GET /items/x -> 403: no")
+    assert client.get("/setup/status").json()["pluggy_alert_since"]
+    sync = client.get("/sync/status", headers=auth_headers).json()
+    assert "403" in sync["pluggy_alert"]["detail"]
+
+    class Ok:
+        def __init__(self, *args):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            pass
+
+        def check_credentials(self):
+            pass
+
+    monkeypatch.setattr(setup_routes, "PluggyClient", Ok)
+    monkeypatch.setattr(setup_routes, "save_local_settings", lambda updates: None)
+    keys = {"client_id": "novo", "client_secret": "s"}
+    assert client.put("/setup/pluggy", json=keys, headers=auth_headers).status_code == 204
+    assert client.get("/setup/status").json()["pluggy_alert_since"] is None

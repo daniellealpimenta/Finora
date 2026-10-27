@@ -8,12 +8,8 @@ Uso (dentro de backend/):
 import argparse
 import getpass
 
-import pyotp
-from sqlalchemy import select
-
-from app.core.security import encrypt_field, hash_password
-from app.db.models import User
 from app.db.session import SessionLocal
+from app.services.users import MIN_PASSWORD_LENGTH, save_user, totp_uri
 
 
 def main() -> None:
@@ -23,24 +19,17 @@ def main() -> None:
     args = parser.parse_args()
 
     password = getpass.getpass("Senha: ")
-    if len(password) < 12:
-        raise SystemExit("Use uma senha com pelo menos 12 caracteres.")
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise SystemExit(f"Use uma senha com pelo menos {MIN_PASSWORD_LENGTH} caracteres.")
     if getpass.getpass("Confirme a senha: ") != password:
         raise SystemExit("As senhas não conferem.")
 
-    email = args.email.lower()
-    totp_secret = pyotp.random_base32() if args.totp else None
-
     with SessionLocal() as db:
-        user = db.scalar(select(User).where(User.email == email)) or User(email=email)
-        user.password_hash = hash_password(password)
-        user.totp_secret = encrypt_field(totp_secret) if totp_secret else None
-        db.add(user)
-        db.commit()
+        user, totp_secret = save_user(db, args.email, password, totp=args.totp)
 
-    print(f"Usuário {email} salvo.")
+    print(f"Usuário {user.email} salvo.")
     if totp_secret:
-        uri = pyotp.TOTP(totp_secret).provisioning_uri(name=email, issuer_name="ManagerFinance")
+        uri = totp_uri(totp_secret, user.email)
         print("Adicione no seu app autenticador (cole a URI ou digite o segredo):")
         print(f"  segredo: {totp_secret}\n  uri:     {uri}")
 

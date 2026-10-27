@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from app import __version__
 from app.api.routes import (
     assistant,
     auth,
@@ -21,6 +22,7 @@ from app.api.routes import (
     imports,
     pluggy,
     savings,
+    setup,
     transactions,
     wishlist,
 )
@@ -74,7 +76,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title="ManagerFinance API",
-        version="0.2.0",
+        version=__version__,
         # Docs interativas só fora de produção
         docs_url=None if settings.environment == "production" else "/docs",
         redoc_url=None,
@@ -91,8 +93,9 @@ def create_app() -> FastAPI:
 
     @app.get("/health", tags=["meta"])
     def health() -> dict[str, str]:
-        return {"status": "ok"}
+        return {"status": "ok", "version": __version__}
 
+    app.include_router(setup.router)
     app.include_router(auth.router)
     app.include_router(pluggy.router)
     app.include_router(connections.router)

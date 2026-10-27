@@ -1,0 +1,58 @@
+# A cada tag v* (ex.: git tag v0.3.0 && git push --tags), gera o instalador para Windows
+# e o publica no GitHub Releases.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versão da tag confere com o app
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          $app = (Select-String -Path backend/app/__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
+          if (-not $version.StartsWith($app)) { throw "Tag $version, mas backend/app/__init__.py diz $app" }
+          "APP_VERSION=$version" >> $env:GITHUB_ENV
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Testes do backend
+        working-directory: backend
+        run: uv run pytest -q
+
+      - name: Dependências do frontend
+        working-directory: frontend
+        run: npm ci
+
+      - name: Gerar o programa
+        shell: pwsh
+        run: ./scripts/build-desktop.ps1 -NoInstall
+
+      - name: Gerar o instalador
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$env:APP_VERSION" scripts/installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC falhou" }
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/ManagerFinance-Setup-*.exe
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
