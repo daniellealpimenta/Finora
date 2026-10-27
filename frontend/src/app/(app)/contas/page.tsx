@@ -156,7 +156,14 @@ export default function ContasPage() {
         const r = status.last_result;
         if (status.last_error) setError(`A sincronização falhou: ${status.last_error}`);
         else if (r) {
-          notify(`Sincronizado: ${r.created} novas, ${r.updated} atualizadas, ${r.deleted} removidas.`);
+          // O Pila conta a novidade; sem nada novo, só confirma
+          if (r.created > 0)
+            notify(
+              r.created === 1 ? "Chegou 1 transação nova." : `Chegaram ${r.created} transações novas.`,
+              "ok",
+              { mood: "celebrate", coin: true },
+            );
+          else notify("Tudo em dia, nada novo nos bancos.", "ok", { mood: "happy" });
           if (r.errors.length) setError(`Alguns bancos tiveram erro: ${r.errors.join("; ")}`);
         }
       }
@@ -459,7 +466,7 @@ function AccountList({
             {used !== null && usedStatus && (
               <div className="grid gap-1 pl-12">
                 <Meter thin value={used} color={STATUS_COLOR[usedStatus]} label={`${percent(used)} do limite usado`} />
-                <p className="text-[11px] text-muted tabular">{percent(used)} do limite usado</p>
+                <p className="text-xs text-muted tabular">{percent(used)} do limite usado</p>
               </div>
             )}
             {isCard && <ClosingDay account={a} card={cards.get(a.id)} onSave={(day) => onClosingDay(a, day)} />}

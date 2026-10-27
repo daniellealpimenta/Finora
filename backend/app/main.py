@@ -1,4 +1,6 @@
 import logging
+import os
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -8,6 +10,7 @@ from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import (
     assistant,
@@ -28,7 +31,16 @@ from app.workers.scheduler import start_scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s - %(message)s")
 
-_BACKEND_DIR = Path(__file__).resolve().parent.parent
+# No .exe (PyInstaller) alembic.ini, migrations/ e o frontend ficam na pasta do pacote
+_BACKEND_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+
+
+def _frontend_dir() -> Path | None:
+    """Frontend estático (next build com NEXT_OUTPUT=export). Só existe no .exe ou se
+    FRONTEND_DIR for definido; no modo web o Next serve as páginas e isto fica de fora."""
+    configured = os.environ.get("FRONTEND_DIR")
+    path = Path(configured) if configured else _BACKEND_DIR / "frontend"
+    return path if (path / "index.html").is_file() else None
 
 
 def _require_migrated_db() -> None:
@@ -91,6 +103,11 @@ def create_app() -> FastAPI:
     app.include_router(cards.router)
     app.include_router(wishlist.router)
     app.include_router(assistant.router)
+
+    # Por último: as rotas da API têm prioridade sobre os arquivos do frontend
+    frontend = _frontend_dir()
+    if frontend:
+        app.mount("/", StaticFiles(directory=frontend, html=True), name="frontend")
     return app
 
 

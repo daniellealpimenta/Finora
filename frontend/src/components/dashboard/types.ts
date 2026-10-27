@@ -140,6 +140,21 @@ export type Forecast = {
   forecast_end: number;
   /** O dinheiro de agora até a próxima entrada, já tirando as contas que vencem antes dela */
   until_income: { label: string; date: string; days: number; fixed_before: number; free: number; daily: number } | null;
+  /** Saúde financeira ao lado da conta (services/affordability.health_check) */
+  health: HealthCheck;
+  /** Folga média do mês além da meta de guardar */
+  monthly_room: number;
+};
+
+export type HealthCheck = {
+  status: "ok" | "warn" | "bad";
+  score: number;
+  reserve_months: number | null;
+  reserve_status: "ok" | "warn" | "bad";
+  commitment: number | null;
+  commitment_status: "ok" | "warn" | "bad";
+  /** Frases prontas do que fazer, na ordem de importância */
+  tips: string[];
 };
 
 /** GET/PUT /planning */

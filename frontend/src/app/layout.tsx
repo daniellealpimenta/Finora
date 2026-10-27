@@ -1,11 +1,18 @@
 import type { Metadata } from "next";
-import { Manrope } from "next/font/google";
+import { Bricolage_Grotesque, Manrope } from "next/font/google";
 import "./globals.css";
 
 const manrope = Manrope({
   variable: "--font-manrope",
   subsets: ["latin"],
   weight: ["300", "400", "500", "600", "700"],
+});
+
+// Números grandes e títulos (MASTER.md, "Tipografia"); o texto continua em Manrope
+const bricolage = Bricolage_Grotesque({
+  variable: "--font-bricolage",
+  subsets: ["latin"],
+  axes: ["opsz", "wdth"],
 });
 
 export const metadata: Metadata = {
@@ -26,7 +33,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className={`${manrope.variable} antialiased`}>{children}</body>
+      <body className={`${manrope.variable} ${bricolage.variable} antialiased`}>{children}</body>
     </html>
   );
 }

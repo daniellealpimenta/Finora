@@ -17,7 +17,7 @@ import { useEffect, useState } from "react";
 
 import { AssistantProvider } from "@/components/assistant/context";
 import { AssistantFab } from "@/components/assistant/fab";
-import { ThemeToggle, Toaster, VaultMark } from "@/components/chrome";
+import { CoinMark, SoundToggle, ThemeToggle, Toaster } from "@/components/chrome";
 import { IconButton, cx, tone } from "@/components/ui";
 import { api, setToken, type Me } from "@/lib/api";
 
@@ -68,7 +68,8 @@ const ASSISTANT = NAV[NAV.length - 1];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const pathname = usePathname();
+  // No .exe (export estático, trailingSlash) o caminho chega como "/transacoes/"
+  const pathname = usePathname().replace(/(.)\/$/, "$1");
   const [me, setMe] = useState<Me | null>(null);
 
   useEffect(() => {
@@ -87,13 +88,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AssistantProvider>
       <div className="min-h-screen">
-        <header className="sticky top-0 z-30 border-b border-border bg-surface">
+        {/* Barra do topo sempre grafite (theme-dark): âncora do layout e a moeda de latão brilhando nela */}
+        <header className="theme-dark sticky top-0 z-30 border-b border-border bg-surface text-foreground">
           <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-2.5 sm:px-6">
             <Link
               href="/"
-              className="mr-4 flex shrink-0 items-center gap-2.5 rounded-control font-bold"
+              className="mr-4 flex shrink-0 items-center gap-2.5 rounded-control font-display text-[17px] font-bold"
             >
-              <VaultMark />
+              <CoinMark />
               ManagerFinance
             </Link>
             <nav className="hidden gap-1 sm:flex" aria-label="Seções">
@@ -119,6 +121,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               >
                 <ASSISTANT.icon className="size-[18px]" strokeWidth={2.2} />
               </Link>
+              <SoundToggle className="max-sm:hidden" />
               <ThemeToggle />
               <IconButton label="Sair" onClick={logout}>
                 <LogOut />
@@ -186,7 +189,7 @@ function NavLink({
       aria-current={active ? "page" : undefined}
       title={item.label}
       className={cx(
-        "inline-flex min-h-9 items-center gap-2 rounded-control px-2.5 text-sm font-medium lg:px-3",
+        "inline-flex min-h-9 items-center gap-2 rounded-control px-2.5 text-sm font-medium whitespace-nowrap xl:px-3",
         "transition-colors duration-[var(--dur-base)] ease-[var(--ease-out)]",
         active
           ? "bg-[color-mix(in_oklab,var(--c)_13%,transparent)] text-foreground"
@@ -194,8 +197,8 @@ function NavLink({
       )}
     >
       <Icon className="size-4 text-[var(--c)]" strokeWidth={2.2} />
-      {/* Entre sm e lg, 7 seções não cabem com nome: fica o ícone (o nome vai no title e no leitor de tela) */}
-      <span className="sr-only lg:not-sr-only">{item.label}</span>
+      {/* Entre sm e xl, 7 seções não cabem com nome: fica o ícone (o nome vai no title e no leitor de tela) */}
+      <span className="max-xl:sr-only">{item.label}</span>
     </Link>
   );
 }

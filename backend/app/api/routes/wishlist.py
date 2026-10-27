@@ -9,7 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbSession
+from app.api.numbers import plain
 from app.db.models import SavingsPot, WishGroup, WishItem, WishPrice, WishStatus
+from app.services import affordability
 from app.services import wishlist as wish_service
 
 router = APIRouter(tags=["desejos"])
@@ -188,6 +190,28 @@ def get_wishlist(_: CurrentUser, db: DbSession) -> WishlistOut:
         count=totals["wanted_count"],
         ungrouped_total=totals["by_group"].get(None, ZERO),
         bought_total=totals["bought"],
+    )
+
+
+@router.get("/wishlist/affordability")
+def wishlist_affordability(_: CurrentUser, db: DbSession) -> dict:
+    """Para cada desejo ainda não comprado: cabe, aperta ou não cabe neste ciclo, com a saúde
+    financeira, parcelamento e quanto tempo para juntar (services/affordability.py)."""
+    ctx = affordability.context(db, date.today())
+    items = list(
+        db.scalars(
+            select(WishItem)
+            .where(WishItem.status == WishStatus.WANTED)
+            .order_by(WishItem.priority, WishItem.created_at.desc())
+        )
+    )
+    return plain(
+        {
+            "health": ctx["health"],
+            "items": {str(i.id): affordability.evaluate(i.price, ctx) for i in items},
+            # Na ordem da lista (prioridade): quantos cabem juntos sem apertar
+            "together": affordability.together([(str(i.id), i.price) for i in items], ctx),
+        }
     )
 
 

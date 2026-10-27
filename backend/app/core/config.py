@@ -12,7 +12,11 @@ _DATA_DIR = Path(user_data_dir("ManagerFinance", appauthor=False))
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=(".env", "../.env"), extra="ignore")
+    # O .exe não roda dentro do projeto: lê o .env da pasta de dados. O último arquivo
+    # vence, então no modo web o .env do projeto continua mandando.
+    model_config = SettingsConfigDict(
+        env_file=(_DATA_DIR / ".env", ".env", "../.env"), extra="ignore"
+    )
 
     environment: str = "development"
     # Fora da pasta do projeto (que pode estar sincronizada com OneDrive/iCloud):

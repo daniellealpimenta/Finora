@@ -303,3 +303,38 @@ export const INFO_FORECAST: ReactNode = (
     </p>
   </>
 );
+
+export const INFO_WISH_FIT: ReactNode = (
+  <>
+    <p>
+      Cada desejo ganha um selo pela <strong>mesma conta que o Pila usa</strong> quando você pergunta se dá para comprar.
+    </p>
+    <ul>
+      <li>
+        <strong>Cabe neste ciclo:</strong> cabe no que sobra depois da meta de guardar e do seu ritmo normal do dia a
+        dia (a última linha da Previsão do ciclo).
+      </li>
+      <li>
+        <strong>Cabe segurando o dia a dia:</strong> não mexe na meta, mas o dia a dia teria que caber em menos por dia
+        até o fim do ciclo.
+      </li>
+      <li>
+        <strong>Não cabe neste ciclo:</strong> passa do que dá para gastar; à vista, comeria a meta de guardar ou o
+        necessário.
+      </li>
+      <li>
+        <strong>Saúde antes do desejo:</strong> com a reserva de emergência abaixo de 3 meses, nada fica como
+        &quot;cabe&quot;: a recomendação é guardar primeiro.
+      </li>
+      <li>
+        <strong>Item caro:</strong> sugere a menor quantidade de parcelas (até 12x) que cabe em metade da sua folga do
+        mês. Se fixos e parcelas passarem de 30% da renda, recomenda juntar e diz em quantos ciclos.
+      </li>
+      <li>
+        <strong>Vários itens:</strong> cada selo é do item sozinho; o resumo diz quais cabem juntos, na ordem de
+        prioridade.
+      </li>
+    </ul>
+    <p className="text-muted">Parcelas consideradas sem juros: confira com a loja antes de parcelar.</p>
+  </>
+);

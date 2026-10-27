@@ -1,3 +1,5 @@
+"use client";
+
 import {
   ArrowDownLeft,
   ArrowLeftRight,
@@ -36,7 +38,9 @@ import {
   Wifi,
   type LucideIcon,
 } from "lucide-react";
+import { useEffect, useRef } from "react";
 
+import { gsap, motion, prefersReducedMotion } from "@/lib/motion";
 import type { CategoryKind } from "@/lib/api";
 import { IconBadge } from "./ui";
 
@@ -115,5 +119,20 @@ export function CategoryIcon({
   className?: string;
 }) {
   const { color, icon } = categoryStyle(categoryKey, kind);
-  return <IconBadge icon={icon} color={color} size={size} className={className} />;
+  const wrap = useRef<HTMLSpanElement>(null);
+  const shown = useRef(categoryKey);
+
+  // Categoria trocada (pelo usuário ou por uma regra): o selo vira mostrando a troca
+  useEffect(() => {
+    if (shown.current === categoryKey) return;
+    shown.current = categoryKey;
+    if (!wrap.current || prefersReducedMotion()) return;
+    gsap.fromTo(wrap.current, { rotationY: -90, scale: 0.8 }, { rotationY: 0, scale: 1, ...motion.swap });
+  }, [categoryKey]);
+
+  return (
+    <span ref={wrap} className="inline-grid shrink-0">
+      <IconBadge icon={icon} color={color} size={size} className={className} />
+    </span>
+  );
 }

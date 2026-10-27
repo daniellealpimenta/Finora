@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.api.deps import CurrentUser, DbSession
 from app.api.numbers import plain
 from app.db.models import Budget, Category, CategoryKind
-from app.services import analytics, forecast
+from app.services import affordability, analytics, forecast
 from app.services import cycles as cycle_service
 from app.services.periods import month_bounds
 
@@ -43,8 +43,10 @@ def set_cycle_start(body: CycleStartIn, _: CurrentUser, db: DbSession) -> dict:
 
 @router.get("/dashboard/forecast")
 def cycle_forecast(_: CurrentUser, db: DbSession) -> dict:
-    """Previsão do fim do ciclo atual: livre agora + entradas previstas − saídas previstas."""
-    return plain(forecast.forecast(db, date.today()))
+    """Previsão do fim do ciclo atual: livre agora + entradas previstas − saídas previstas,
+    com a saúde financeira ao lado (reserva e compromissos fixos) e o que fazer a respeito."""
+    ctx = affordability.context(db, date.today())
+    return plain({**ctx["forecast"], "health": ctx["health"], "monthly_room": ctx["monthly_room"]})
 
 
 class IncomeRule(BaseModel):

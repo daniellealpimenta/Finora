@@ -20,6 +20,7 @@ import {
 } from "@/components/ui";
 import { api, qs, type Category } from "@/lib/api";
 import { CyclePicker } from "@/components/cycle-picker";
+import { PilaSays } from "@/components/pila";
 import { cycleName, useCycle } from "@/lib/cycle";
 import { money, percent } from "@/lib/format";
 import { usePageEnter } from "@/lib/motion";
@@ -111,8 +112,8 @@ export default function OrcamentosPage() {
         {categories && totalBudget > 0 && (
           <Card data-enter className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
             <div className="grid gap-3">
-              <p className="label uppercase">Gasto nas categorias com limite</p>
-              <p className="text-[clamp(32px,5vw,44px)] leading-tight font-light tracking-[-0.03em] tabular">
+              <p className="label">Gasto nas categorias com limite</p>
+              <p className="text-[clamp(32px,5vw,44px)] leading-tight font-display font-normal tracking-[-0.03em] tabular">
                 {money(totalSpent)}
                 <span className="text-base font-medium tracking-normal text-muted"> de {money(totalBudget)}</span>
               </p>
@@ -122,12 +123,26 @@ export default function OrcamentosPage() {
                 label={`${percent(totalSpent / totalBudget)} do total de limites`}
               />
             </div>
-            <div className="flex flex-wrap gap-2 md:justify-end">
-              {(["ok", "warn", "bad"] as const).map((s) => (
-                <Pill key={s} status={s}>
-                  {counts[s]} {STATUS_TEXT[s].toLowerCase()}
-                </Pill>
-              ))}
+            <div className="grid justify-items-start gap-3 md:justify-items-end">
+              <PilaSays
+                mood={counts.bad ? "worried" : counts.warn ? "neutral" : "happy"}
+                size={64}
+              >
+                {counts.bad
+                  ? counts.bad === 1
+                    ? "Uma categoria passou do limite."
+                    : `${counts.bad} categorias passaram do limite.`
+                  : counts.warn
+                    ? "Perto do limite em algumas. Vai com calma."
+                    : "Tudo dentro do limite até agora."}
+              </PilaSays>
+              <div className="flex flex-wrap gap-2 md:justify-end">
+                {(["ok", "warn", "bad"] as const).map((s) => (
+                  <Pill key={s} status={s}>
+                    {counts[s]} {STATUS_TEXT[s].toLowerCase()}
+                  </Pill>
+                ))}
+              </div>
             </div>
           </Card>
         )}
@@ -208,7 +223,7 @@ function BudgetRow({
           )}
         </div>
         {budget !== null && (
-          <div className="pl-12">
+          <div className="pl-12" data-over={status === "bad" ? "" : undefined}>
             <Meter
               thin
               value={ratio}
@@ -241,7 +256,8 @@ function BudgetRow({
             onChange={(e) => onDraft(e.target.value)}
           />
         </div>
-        <Button type="submit" variant={dirty ? "primary" : "secondary"} disabled={!dirty}>
+        {/* Só aparece com algo para salvar; invisible guarda o lugar para a linha não pular */}
+        <Button type="submit" variant="primary" disabled={!dirty} className={cx(!dirty && "invisible")}>
           Salvar
         </Button>
       </form>

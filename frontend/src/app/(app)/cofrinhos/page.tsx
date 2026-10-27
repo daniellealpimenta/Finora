@@ -20,10 +20,12 @@ import {
 } from "@/components/ui";
 import { api, type Investment, type PotYields, type SavingsPot } from "@/lib/api";
 import { earnedText, money, parseMoney, percent, shortDate } from "@/lib/format";
-import { usePageEnter } from "@/lib/motion";
+import { FULL, gsap, useGSAP, usePageEnter } from "@/lib/motion";
 import { notify } from "@/lib/signals";
 
 const POT_COLOR = "var(--cat-care)";
+// Saldo de cada cofrinho na última visita, para comemorar o que cresceu desde então
+const SEEN_KEY = "mf_pots_seen";
 
 const fullDate = (iso: string | null) =>
   iso ? new Date(`${iso}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }) : "";
@@ -50,6 +52,34 @@ export default function CofrinhosPage() {
   useEffect(() => {
     load().catch((e) => setError(e.message));
   }, [load]);
+
+  // Cofrinho que cresceu desde a última visita: uma moeda cai nele, uma vez só
+  const [grown, setGrown] = useState<Record<number, number>>({});
+  useEffect(() => {
+    if (!pots) return;
+    const now = Object.fromEntries(pots.map((p) => [p.id, Number(p.balance)]));
+    let seen: Record<string, number> | null = null;
+    try {
+      seen = JSON.parse(localStorage.getItem(SEEN_KEY) ?? "null");
+      localStorage.setItem(SEEN_KEY, JSON.stringify(now));
+    } catch {
+      /* storage indisponível: sem comemoração */
+    }
+    if (!seen) return;
+    const grew: Record<number, number> = {};
+    for (const p of pots) {
+      const before = seen[p.id];
+      if (before !== undefined && Number(p.balance) - before >= 1) grew[p.id] = Number(p.balance) - before;
+    }
+    setGrown(grew);
+    const ids = Object.keys(grew).map(Number);
+    if (ids.length === 1) {
+      const pot = pots.find((p) => p.id === ids[0])!;
+      notify(`${pot.name} cresceu ${money(grew[pot.id])}.`, "ok", { mood: "celebrate", coin: true });
+    } else if (ids.length > 1) {
+      notify(`${ids.length} cofrinhos cresceram desde a última visita.`, "ok", { mood: "celebrate", coin: true });
+    }
+  }, [pots]);
 
   async function run(action: () => Promise<unknown>, message?: string) {
     try {
@@ -129,6 +159,7 @@ export default function CofrinhosPage() {
             }
             onMove={move}
             onRemove={() => setRemoving(pot)}
+            grew={grown[pot.id]}
           />
         ))}
 
@@ -140,7 +171,7 @@ export default function CofrinhosPage() {
                 <h2 className="font-semibold">Sem cofrinho</h2>
                 <p className="text-xs text-muted">Escolha para onde cada aplicação vai.</p>
               </div>
-              <p className="text-lg font-light tabular">
+              <p className="text-lg font-display font-normal tabular">
                 {money(loose.reduce((sum, i) => sum + Number(i.balance), 0))}
               </p>
             </div>
@@ -289,6 +320,7 @@ function PotCard({
   onGoal,
   onMove,
   onRemove,
+  grew,
 }: {
   pot: SavingsPot;
   pots: SavingsPot[];
@@ -297,7 +329,26 @@ function PotCard({
   onGoal: (goal: number | null) => Promise<void>;
   onMove: (inv: Investment, potId: number | null) => Promise<void>;
   onRemove: () => void;
+  /** Quanto cresceu desde a última visita: uma moeda cai no saldo. */
+  grew?: number;
 }) {
+  const coinBox = useRef<HTMLDivElement>(null);
+  useGSAP(
+    () => {
+      if (!grew) return;
+      const mm = gsap.matchMedia();
+      mm.add(FULL, () => {
+        const q = gsap.utils.selector(coinBox);
+        gsap
+          .timeline({ delay: 0.6 })
+          .fromTo(q("[data-coin]"), { y: -60, autoAlpha: 0, rotationY: 0 }, { y: 0, autoAlpha: 1, rotationY: 540, duration: 0.6, ease: "power2.in" })
+          .to(q("[data-coin]"), { autoAlpha: 0, scale: 0.4, duration: 0.15 })
+          .fromTo(q("[data-balance]"), { scale: 1 }, { scale: 1.08, duration: 0.15, yoyo: true, repeat: 1, ease: "power2.out" }, "<");
+      });
+      return () => mm.revert();
+    },
+    { scope: coinBox, dependencies: [grew] },
+  );
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(pot.name);
   const [editingGoal, setEditingGoal] = useState(false);
@@ -359,7 +410,18 @@ function PotCard({
             )}
           </p>
         </div>
-        <p className="text-[28px] leading-tight font-light tracking-[-0.02em] tabular">{money(balance)}</p>
+        <div ref={coinBox} className="relative">
+          {grew !== undefined && (
+            <span
+              data-coin
+              aria-hidden
+              className="invisible absolute -top-1 left-1/2 -ml-3 size-6 rounded-full bg-[var(--coin)] shadow-[inset_0_0_0_2px_var(--coin-line)]"
+            />
+          )}
+          <p data-balance className="origin-right text-[28px] leading-tight font-display font-normal tracking-[-0.02em] tabular">
+            {money(balance)}
+          </p>
+        </div>
         <IconButton label={`Apagar ${pot.name}`} onClick={onRemove}>
           <Trash2 />
         </IconButton>
@@ -475,7 +537,7 @@ function DailyYields({ potId }: { potId: number }) {
         {data && (
           <>
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <span className="text-[22px] font-light tracking-[-0.02em] text-positive tabular">
+              <span className="text-[22px] font-display font-normal tracking-[-0.02em] text-positive tabular">
                 +{money(average)}
               </span>
               <span className="text-sm text-muted">
@@ -536,7 +598,7 @@ function Applications({
   return (
     <details className="group rounded-control bg-surface-2/60 open:bg-transparent">
       <summary className="flex min-h-10 items-center rounded-control px-3 text-sm font-semibold text-muted hover:text-foreground">
-        Ver as {items.length} {items.length === 1 ? "aplicação" : "aplicações"}
+        {items.length === 1 ? "Ver a aplicação" : `Ver as ${items.length} aplicações`}
       </summary>
       <ul className="mt-1 grid divide-y divide-border">
         {items.map((i) => {

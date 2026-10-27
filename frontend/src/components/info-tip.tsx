@@ -66,7 +66,7 @@ export function InfoTip({
             align === "end" ? "right-0" : "left-0",
           )}
         >
-          <p className="text-[11px] font-semibold tracking-[0.06em] text-muted uppercase">{label}</p>
+          <p className="text-xs font-semibold text-muted">{label}</p>
           {children}
         </div>
       )}

@@ -48,7 +48,7 @@ function BillChip({ status }: { status: BillStatus }) {
   return (
     <span
       style={tone(s ? STATUS_COLOR[s] : "var(--accent)")}
-      className="tint inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap"
+      className="tint inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap"
     >
       {s ? <StatusShape status={s} className="size-2.5" /> : <span className="size-2 rounded-full bg-[var(--c)]" aria-hidden />}
       {BILL_LABEL[status]}
@@ -181,7 +181,7 @@ export function CardsCard({ cards }: { cards: CreditCardInfo[] }) {
           {withLimit.length > 0 && (
             <div className="grid gap-2">
               <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                <p className="text-[28px] leading-tight font-light tracking-[-0.02em] tabular">
+                <p className="text-[28px] leading-tight font-display font-normal tracking-[-0.02em] tabular">
                   {money(totalUsed)}
                   <span className="text-sm font-medium tracking-normal text-muted"> de {money(totalLimit)}</span>
                 </p>
@@ -193,7 +193,7 @@ export function CardsCard({ cards }: { cards: CreditCardInfo[] }) {
                 limit={totalLimit}
                 label={`${percent(totalUsed / totalLimit)} do limite total usado`}
               />
-              <p className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted">
+              <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="size-2.5 rounded-[3px]" style={{ background: totalColor }} aria-hidden />
                   faturas

@@ -293,8 +293,11 @@ export default function TransacoesPage() {
                             </span>
                             <select
                               className={cx(
-                                inputClass,
-                                "col-span-2 col-start-2 min-h-9 w-full text-xs sm:col-span-1 sm:col-start-auto",
+                                // Um por linha: preenchido e sem contorno, que só aparece no hover/foco
+                                "min-h-9 w-full rounded-control border border-transparent bg-surface-2 px-3 text-xs text-foreground outline-none",
+                                "transition-[border-color,box-shadow] duration-[var(--dur-fast)] ease-[var(--ease-out)] hover:border-border",
+                                "focus-visible:border-accent focus-visible:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_25%,transparent)]",
+                                "col-span-2 col-start-2 sm:col-span-1 sm:col-start-auto",
                               )}
                               value={t.category_id ?? ""}
                               onChange={(e) => setEditing({ tx: t, categoryId: Number(e.target.value) })}
@@ -379,7 +382,7 @@ function CategoryCards({
         <button type="button" className={card(selected === "")} aria-pressed={selected === ""} onClick={() => onSelect("")}>
           <IconBadge icon={List} color="var(--accent)" />
           <span className="text-sm font-semibold">Todas</span>
-          <span className="text-lg font-light tabular">{money(total)}</span>
+          <span className="text-lg font-display font-normal tabular">{money(total)}</span>
           <span className="text-xs text-muted">
             {rows.length} {rows.length === 1 ? "categoria" : "categorias"}
           </span>
@@ -395,7 +398,7 @@ function CategoryCards({
             <button key={id} type="button" className={card(active)} aria-pressed={active} onClick={() => onSelect(id)}>
               <CategoryIcon categoryKey={cat?.key} kind={cat?.kind ?? "EXPENSE"} />
               <span className="truncate text-sm font-semibold">{r.category_name}</span>
-              <span className="text-lg font-light tabular">{money(spent)}</span>
+              <span className="text-lg font-display font-normal tabular">{money(spent)}</span>
               <Meter thin value={share} color={categoryStyle(cat?.key, cat?.kind ?? "EXPENSE").color} />
               <span className="text-xs text-muted tabular">{percent(share)} do total</span>
             </button>

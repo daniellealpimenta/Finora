@@ -16,7 +16,8 @@ import { useAssistant } from "./context";
  * página. Na aba Assistente ele some (a conversa já está na tela).
  */
 export function AssistantFab() {
-  const pathname = usePathname();
+  // No .exe (export estático, trailingSlash) o caminho chega como "/transacoes/"
+  const pathname = usePathname().replace(/(.)\/$/, "$1");
   const { busy, turns } = useAssistant();
   const [open, setOpen] = useState(false);
   // Resposta que chegou com o painel fechado: um ponto no botão avisa

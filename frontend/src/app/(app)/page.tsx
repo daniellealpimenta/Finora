@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutGrid } from "lucide-react";
+import { LayoutGrid, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -18,9 +18,6 @@ import {
   RecurringCard,
   ReserveCard,
   SavingsCard,
-  centsPart,
-  heroValueOf,
-  intPart,
   RING_LENGTH,
 } from "@/components/dashboard/cards";
 import { BillsCard, CardsCard } from "@/components/dashboard/credit";
@@ -37,6 +34,7 @@ import type {
 } from "@/components/dashboard/types";
 import { CyclePicker } from "@/components/cycle-picker";
 import { Pila } from "@/components/pila";
+import { CycleRecap, useRecap } from "@/components/recap";
 import { Button, Card, ErrorNote, PageHeader } from "@/components/ui";
 import {
   api,
@@ -47,12 +45,18 @@ import {
   type Investment,
   type SavingsPot,
 } from "@/lib/api";
-import { useCycle } from "@/lib/cycle";
+import { cycleName, useCycle } from "@/lib/cycle";
 import { shortDate } from "@/lib/format";
 import { FULL, gsap, motion, prefersReducedMotion, useGSAP } from "@/lib/motion";
 
 export default function Dashboard() {
   const { key: month, setKey: setMonth, info: cycle, error: cycleError } = useCycle();
+  // Ciclo atual fixo (o escolhido muda; o atual não): base do fechamento do ciclo anterior
+  const [currentKey, setCurrentKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (cycle?.current_key) setCurrentKey(cycle.current_key);
+  }, [cycle?.current_key]);
+  const recap = useRecap(currentKey);
   const [data, setData] = useState<Data | null>(null);
   const [pots, setPots] = useState<SavingsPot[]>([]);
   const [looseTotal, setLooseTotal] = useState(0);
@@ -66,7 +70,6 @@ export default function Dashboard() {
   const content = useRef<HTMLDivElement>(null);
   // Direção da última troca de ciclo (0 = primeira carga) e último valor mostrado no topo
   const direction = useRef(0);
-  const shownHero = useRef(0);
 
   // Previsão: sempre do ciclo atual
   const loadForecast = useCallback(() => {
@@ -138,14 +141,10 @@ export default function Dashboard() {
     setMonth(next);
   });
 
-  const heroValue = data ? heroValueOf(data.summary) : 0;
-
   // Momentos de entrada: primeira carga orquestrada; troca de mês desliza na direção da seta
   useGSAP(
     () => {
       if (!data) return;
-      const from = shownHero.current;
-      shownHero.current = heroValue;
       const mm = gsap.matchMedia();
       mm.add(FULL, () => {
         const q = gsap.utils.selector(root);
@@ -170,22 +169,7 @@ export default function Dashboard() {
         }
         const at = first ? 0.3 : 0;
 
-        // Número do topo conta do valor anterior (ou de zero) até o novo
-        const counter = { v: first ? 0 : from };
-        const [int] = q("[data-hero-int]");
-        const [cents] = q("[data-hero-cents]");
-        tl.to(
-          counter,
-          {
-            v: heroValue,
-            ...motion.count,
-            onUpdate: () => {
-              if (int) int.textContent = intPart(counter.v);
-              if (cents) cents.textContent = centsPart(counter.v);
-            },
-          },
-          at,
-        );
+        // O número do topo rola sozinho (Odometer)
 
         const ring = q("[data-ring]");
         if (ring.length) {
@@ -219,10 +203,17 @@ export default function Dashboard() {
               <LayoutGrid />
               {editing ? "Concluir" : "Personalizar"}
             </Button>
+            {recap.closedKey && (
+              <Button variant="ghost" onClick={recap.show}>
+                <Sparkles />
+                Fechamento de {cycleName(recap.closedKey)}
+              </Button>
+            )}
             {month && <CyclePicker value={month} info={cycle} onChange={changeMonth} />}
           </>
         }
       />
+      {recap.open && recap.closedKey && <CycleRecap cycleKey={recap.closedKey} onClose={recap.close} />}
       <div ref={content} className="grid gap-4">
         {(error || cycleError) && <ErrorNote>{error ?? cycleError}</ErrorNote>}
 

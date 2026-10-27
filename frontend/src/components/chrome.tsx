@@ -1,15 +1,30 @@
 "use client";
 
-import { Check, Moon, Sun, TriangleAlert } from "lucide-react";
+import { Check, Moon, Sun, TriangleAlert, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { FULL, gsap, motion, prefersReducedMotion, useGSAP } from "@/lib/motion";
 import { dismissToast, useSyncing, useToasts, type Toast } from "@/lib/signals";
+import { playCoin, setSoundOn, soundOn } from "@/lib/sound";
+import { Pila } from "./pila";
 import { IconButton, cx } from "./ui";
 
-/** Logo: um cofre cujo disco destrava ao abrir o app e gira enquanto sincroniza. */
-export function VaultMark({ size = "md", className }: { size?: "md" | "lg"; className?: string }) {
-  const dial = useRef<SVGGElement>(null);
+/** Desenho da moeda-focinho (viewBox 64): o mesmo do ícone do app e do favicon, sem o fundo. */
+export function CoinFace() {
+  return (
+    <>
+      <circle cx="32" cy="32" r="30" fill="var(--coin)" />
+      <circle cx="32" cy="32" r="24" fill="none" stroke="var(--coin-line)" strokeWidth="2.2" opacity="0.45" />
+      <ellipse cx="32" cy="33" rx="16" ry="12" fill="#ebcf98" stroke="var(--coin-line)" strokeWidth="3.4" />
+      <ellipse cx="26.2" cy="33" rx="2.8" ry="4.3" fill="var(--coin-line)" />
+      <ellipse cx="37.8" cy="33" rx="2.8" ry="4.3" fill="var(--coin-line)" />
+    </>
+  );
+}
+
+/** Logo: a moeda-focinho. Dá um giro ao abrir o app e gira como moeda enquanto sincroniza. */
+export function CoinMark({ size = "md", className }: { size?: "md" | "lg"; className?: string }) {
+  const coin = useRef<SVGSVGElement>(null);
   const syncing = useSyncing();
 
   useGSAP(
@@ -17,19 +32,10 @@ export function VaultMark({ size = "md", className }: { size?: "md" | "lg"; clas
       const mm = gsap.matchMedia();
       mm.add(FULL, () => {
         if (syncing) {
-          gsap.to(dial.current, {
-            rotation: "+=360",
-            svgOrigin: "12 12",
-            duration: motion.spin.duration,
-            ease: "none",
-            repeat: -1,
-          });
+          gsap.to(coin.current, { rotationY: "+=360", duration: motion.spin.duration, ease: "none", repeat: -1 });
           return;
         }
-        gsap
-          .timeline()
-          .to(dial.current, { ...motion.dial, svgOrigin: "12 12" })
-          .to(dial.current, { ...motion.dial, rotation: 0, svgOrigin: "12 12" });
+        gsap.fromTo(coin.current, { rotationY: 0 }, { rotationY: 360, duration: motion.flip.duration, ease: motion.flip.ease });
       });
       return () => mm.revert();
     },
@@ -37,28 +43,9 @@ export function VaultMark({ size = "md", className }: { size?: "md" | "lg"; clas
   );
 
   return (
-    <span
-      className={cx(
-        "grid shrink-0 place-items-center bg-accent text-accent-fg",
-        size === "lg" ? "size-14 rounded-card" : "size-8 rounded-[9px]",
-        className,
-      )}
-      aria-hidden
-    >
-      <svg
-        viewBox="0 0 24 24"
-        className={cx("overflow-visible", size === "lg" ? "size-8" : "size-5")}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <rect x="2.5" y="2.5" width="19" height="19" rx="3" />
-        <g ref={dial}>
-          <circle cx="12" cy="12" r="4.5" />
-          <path d="M12 7.5v2M12 14.5v2M7.5 12h2M14.5 12h2" />
-        </g>
+    <span className={cx("grid shrink-0 place-items-center [perspective:200px]", className)} aria-hidden>
+      <svg ref={coin} viewBox="0 0 64 64" className={size === "lg" ? "size-14" : "size-8"}>
+        <CoinFace />
       </svg>
     </span>
   );
@@ -103,6 +90,26 @@ export function ThemeToggle() {
   );
 }
 
+/** Liga e desliga o "tlim" de moeda. Ao ligar, toca uma vez para você ouvir como é. */
+export function SoundToggle({ className }: { className?: string }) {
+  const [on, setOn] = useState(false);
+  useEffect(() => setOn(soundOn()), []);
+  return (
+    <IconButton
+      className={className}
+      label={on ? "Desligar som de moeda" : "Ligar som de moeda"}
+      aria-pressed={on}
+      onClick={() => {
+        setSoundOn(!on);
+        setOn(!on);
+        if (!on) playCoin(true);
+      }}
+    >
+      {on ? <Volume2 /> : <VolumeX />}
+    </IconButton>
+  );
+}
+
 const TOAST_MS = 3000;
 
 function ToastItem({ toast }: { toast: Toast }) {
@@ -130,16 +137,20 @@ function ToastItem({ toast }: { toast: Toast }) {
       role="status"
       className="invisible flex max-w-sm items-start gap-2.5 rounded-control bg-foreground px-3.5 py-2.5 text-sm font-medium text-background"
     >
-      <span
-        className={cx(
-          "mt-px grid size-5 shrink-0 place-items-center rounded-full text-background [&_svg]:size-3",
-          bad ? "bg-negative" : "bg-positive",
-        )}
-        aria-hidden
-      >
-        {bad ? <TriangleAlert strokeWidth={3} /> : <Check strokeWidth={3} />}
-      </span>
-      <span>{toast.message}</span>
+      {toast.mood ? (
+        <Pila mood={toast.mood} size={28} className="-my-1" />
+      ) : (
+        <span
+          className={cx(
+            "mt-px grid size-5 shrink-0 place-items-center rounded-full text-background [&_svg]:size-3",
+            bad ? "bg-negative" : "bg-positive",
+          )}
+          aria-hidden
+        >
+          {bad ? <TriangleAlert strokeWidth={3} /> : <Check strokeWidth={3} />}
+        </span>
+      )}
+      <span className={cx(toast.mood && "self-center")}>{toast.message}</span>
     </div>
   );
 }

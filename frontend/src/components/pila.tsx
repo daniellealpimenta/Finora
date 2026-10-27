@@ -1,61 +1,126 @@
 "use client";
 
-import { useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import { FULL, gsap, useGSAP } from "@/lib/motion";
 import { cx } from "./ui";
 
 /**
- * Pila, o porquinho de latão (MASTER.md, "Mascote"). Aparece só quando há algo a dizer:
- * login, estado vazio, conquista, sincronização e erro. Nunca em todo card.
+ * Pila, o porquinho (MASTER.md, "Mascote"). De frente, formas chapadas e sem contorno, para a
+ * expressão ler bem até em 28px. Aparece só quando há algo a dizer: login, estado vazio,
+ * conquista, sincronização e erro. Nunca em todo card.
  */
-export type PilaMood = "happy" | "neutral" | "worried" | "sleep";
+export type PilaMood = "happy" | "neutral" | "worried" | "sleep" | "shy" | "celebrate";
 
 const INK = "var(--pila-ink)";
 const LINE = "var(--pila-line)";
 
-function Face({ mood }: { mood: PilaMood }) {
+function Eyes({ mood }: { mood: PilaMood }) {
+  switch (mood) {
+    case "happy":
+    case "celebrate":
+      return <path d="M37 58q6-8 12 0M71 58q6-8 12 0" stroke={INK} strokeWidth="4" fill="none" strokeLinecap="round" />;
+    case "sleep":
+    case "shy":
+      return <path d="M37 56q6 6 12 0M71 56q6 6 12 0" stroke={INK} strokeWidth="3.5" fill="none" strokeLinecap="round" />;
+    default: {
+      const r = mood === "worried" ? 4.6 : 5.6;
+      return (
+        <>
+          {mood === "worried" && (
+            <path d="M35 44l12 4M85 44l-12 4" stroke={INK} strokeWidth="3.5" strokeLinecap="round" />
+          )}
+          {/* data-eyes pisca; data-pupils segue o ponteiro (só com `alive`) */}
+          <g data-eyes>
+            <g data-pupils>
+              <ellipse cx="43" cy="56" rx={r} ry={r + 1.2} fill={INK} />
+              <circle cx="45" cy="53.5" r="1.9" fill="#fff" />
+              <ellipse cx="77" cy="56" rx={r} ry={r + 1.2} fill={INK} />
+              <circle cx="79" cy="53.5" r="1.9" fill="#fff" />
+            </g>
+          </g>
+        </>
+      );
+    }
+  }
+}
+
+function Mouth({ mood }: { mood: PilaMood }) {
   switch (mood) {
     case "happy":
       return (
         <>
-          <path d="M42 55q4-5 8 0M56 53q4-5 8 0" stroke={INK} strokeWidth="3" fill="none" strokeLinecap="round" />
-          <circle cx="49" cy="66" r="3.5" fill="var(--pila-ear)" opacity="0.7" />
-          <path d="M27 84q5 5 10 0" stroke={INK} strokeWidth="3" fill="none" strokeLinecap="round" />
+          <path d="M48 89q12 14 24 0z" fill={INK} />
+          <path d="M53 93q7 5 14 0q-7-3-14 0z" fill="var(--pila-blush)" />
+        </>
+      );
+    case "celebrate":
+      return (
+        <>
+          <path d="M45 87q15 20 30 0z" fill={INK} />
+          <path d="M51 94q9 6 18 0q-9-4-18 0z" fill="var(--pila-blush)" />
+          <path d="M14 30l3-7l3 7l7 3l-7 3l-3 7l-3-7l-7-3zM100 12l2-5l2 5l5 2l-5 2l-2 5l-2-5l-5-2z" fill="var(--coin)" />
         </>
       );
     case "worried":
       return (
         <>
-          <path d="M40 45l8 3M66 43l-8 3" stroke={INK} strokeWidth="3" strokeLinecap="round" />
-          <circle cx="46" cy="55" r="3" fill={INK} />
-          <circle cx="60" cy="53" r="3" fill={INK} />
-          <path d="M84 40q-4 7 0 9q4-2 0-9z" fill="var(--cat-home)" />
-          <path d="M27 86q5-4 10 0" stroke={INK} strokeWidth="3" fill="none" strokeLinecap="round" />
+          <path d="M50 93q5-5 10 0t10 0" stroke={INK} strokeWidth="3.5" fill="none" strokeLinecap="round" />
+          <path d="M95 36q-5 8 0 11q5-3 0-11z" fill="var(--cat-home)" />
         </>
       );
     case "sleep":
       return (
         <>
-          <path d="M42 55h8M56 53h8" stroke={INK} strokeWidth="3" strokeLinecap="round" />
-          <path d="M96 12h8l-8 9h8" stroke="var(--muted)" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          <ellipse cx="60" cy="92" rx="3.5" ry="3" fill={INK} />
+          <path d="M92 20h9l-9 10h9" stroke="var(--muted)" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
         </>
       );
+    case "shy":
+      return <path d="M53 90q7 5 14 0" stroke={INK} strokeWidth="3.5" fill="none" strokeLinecap="round" />;
     default:
-      return (
-        <>
-          <circle cx="46" cy="54" r="3.4" fill={INK} />
-          <circle cx="60" cy="52" r="3.4" fill={INK} />
-          <path d="M28 84h8" stroke={INK} strokeWidth="3" strokeLinecap="round" />
-        </>
-      );
+      return <path d="M50 89q10 8 20 0" stroke={INK} strokeWidth="3.5" fill="none" strokeLinecap="round" />;
   }
+}
+
+/** Pisca de vez em quando e segue o ponteiro com os olhos. A única animação em loop do app
+ * (MASTER.md): curta, rara, e desligada com "reduzir movimento". */
+function useAlive(root: React.RefObject<SVGSVGElement | null>, enabled: boolean, mood: PilaMood) {
+  useEffect(() => {
+    const svg = root.current;
+    if (!enabled || !svg || !window.matchMedia(FULL).matches) return;
+    let timer = 0;
+    const blink = () => {
+      const eyes = svg.querySelector<SVGGElement>("[data-eyes]");
+      if (eyes)
+        gsap.fromTo(eyes, { scaleY: 1 }, { scaleY: 0.1, svgOrigin: "60 56", duration: 0.09, yoyo: true, repeat: 1, ease: "power1.inOut" });
+      timer = window.setTimeout(blink, 2600 + Math.random() * 3600);
+    };
+    timer = window.setTimeout(blink, 1200 + Math.random() * 2000);
+
+    const look = (e: PointerEvent) => {
+      const pupils = svg.querySelector<SVGGElement>("[data-pupils]");
+      if (!pupils) return;
+      const r = svg.getBoundingClientRect();
+      const dx = e.clientX - (r.left + r.width / 2);
+      const dy = e.clientY - (r.top + r.height * 0.45);
+      const d = Math.hypot(dx, dy) || 1;
+      const k = Math.min(1, d / 300) * 3;
+      gsap.to(pupils, { x: (dx / d) * k, y: (dy / d) * k, duration: 0.25, ease: "power2.out", overwrite: true });
+    };
+    window.addEventListener("pointermove", look);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pointermove", look);
+    };
+  }, [root, enabled, mood]);
 }
 
 export function Pila({
   mood = "neutral",
   size = 120,
   coin = false,
+  alive = false,
   className,
   label,
 }: {
@@ -63,11 +128,14 @@ export function Pila({
   size?: number;
   /** Uma moeda cai pela fenda, uma vez (cofrinho cresceu, mês fechou no azul). */
   coin?: boolean;
+  /** Pisca e segue o ponteiro com os olhos. Só onde ele é o centro da tela (login, vazio). */
+  alive?: boolean;
   className?: string;
   /** Texto para leitor de tela; sem ele o Pila é decorativo. */
   label?: string;
 }) {
   const root = useRef<SVGSVGElement>(null);
+  useAlive(root, alive, mood);
 
   useGSAP(
     () => {
@@ -76,11 +144,12 @@ export function Pila({
         const q = gsap.utils.selector(root);
         const tl = gsap.timeline();
         tl.from(root.current, { y: 8, autoAlpha: 0, duration: 0.45, ease: "power3.out" });
+        if (mood === "celebrate") tl.from(q("[data-body]"), { y: -6, duration: 0.5, ease: "back.out(3)" }, 0.1);
         if (coin) {
           tl.fromTo(
             q("[data-coin]"),
-            { y: -26, autoAlpha: 0 },
-            { y: 14, autoAlpha: 1, duration: 0.5, ease: "power2.in" },
+            { y: -28, autoAlpha: 0 },
+            { y: 12, autoAlpha: 1, duration: 0.5, ease: "power2.in" },
             0.25,
           ).to(q("[data-coin]"), { autoAlpha: 0, duration: 0.12 });
         }
@@ -94,31 +163,34 @@ export function Pila({
     <svg
       ref={root}
       width={size}
-      height={(size * 120) / 126}
-      viewBox="0 0 126 120"
+      height={size}
+      viewBox="0 0 120 120"
       className={cx("shrink-0 overflow-visible", className)}
       role={label ? "img" : undefined}
       aria-label={label}
       aria-hidden={label ? undefined : true}
     >
-      <ellipse cx="64" cy="111" rx="40" ry="4.5" fill="#000" opacity="0.18" />
-      <rect x="34" y="88" width="11" height="18" rx="4" fill="var(--pila-leg)" />
-      <rect x="50" y="90" width="11" height="17" rx="4" fill="var(--pila-leg)" opacity="0.85" />
-      <rect x="72" y="90" width="11" height="17" rx="4" fill="var(--pila-leg)" opacity="0.85" />
-      <rect x="86" y="88" width="11" height="18" rx="4" fill="var(--pila-leg)" />
-      <path d="M104 62q12-3 8-13q-4-7-9 1" stroke={LINE} strokeWidth="3" fill="none" strokeLinecap="round" />
-      <path d="M40 40l-5-17l17 9z" fill="var(--pila-ear)" stroke={LINE} strokeWidth="3" strokeLinejoin="round" />
-      <path d="M78 34l7-16l8 17z" fill="var(--pila-ear)" stroke={LINE} strokeWidth="3" strokeLinejoin="round" />
+      <ellipse cx="60" cy="112" rx="32" ry="4.5" fill="#000" opacity="0.16" />
       <g data-coin style={{ visibility: coin ? undefined : "hidden" }}>
-        <circle cx="67" cy="22" r="8" fill="var(--coin)" stroke="var(--coin-line)" strokeWidth="2.5" />
-        <path d="M67 17.5v9" stroke="var(--coin-line)" strokeWidth="2.5" strokeLinecap="round" />
+        <circle cx="60" cy="14" r="8" fill="var(--coin)" stroke="var(--coin-line)" strokeWidth="2.5" />
+        <path d="M60 9.5v9" stroke="var(--coin-line)" strokeWidth="2.5" strokeLinecap="round" />
       </g>
-      <ellipse cx="66" cy="64" rx="43" ry="32" fill="var(--pila-body)" stroke={LINE} strokeWidth="3" />
-      <rect x="56" y="34" width="22" height="4.5" rx="2.2" fill={LINE} />
-      <ellipse cx="31" cy="70" rx="12" ry="9.5" fill="var(--pila-light)" stroke={LINE} strokeWidth="3" />
-      <ellipse cx="27" cy="70" rx="1.8" ry="2.8" fill={LINE} />
-      <ellipse cx="35" cy="70" rx="1.8" ry="2.8" fill={LINE} />
-      <Face mood={mood} />
+      <g data-body>
+        <rect x="34" y="90" width="17" height="19" rx="7" fill="var(--pila-ear)" />
+        <rect x="69" y="90" width="17" height="19" rx="7" fill="var(--pila-ear)" />
+        <path d="M26 42Q19 26 25 19Q31 14 52 30z" fill="var(--pila-ear)" />
+        <path d="M94 42Q101 26 95 19Q89 14 68 30z" fill="var(--pila-ear)" />
+        <ellipse cx="60" cy="63" rx="42" ry="39" fill="var(--pila-body)" />
+        <ellipse cx="44" cy="40" rx="15" ry="8" fill="var(--pila-light)" opacity="0.55" transform="rotate(-18 44 40)" />
+        <rect x="49" y="27" width="22" height="5" rx="2.5" fill={LINE} />
+        <ellipse cx="30" cy="74" rx="7" ry="4.5" fill="var(--pila-blush)" opacity={mood === "shy" ? 0.9 : 0.5} />
+        <ellipse cx="90" cy="74" rx="7" ry="4.5" fill="var(--pila-blush)" opacity={mood === "shy" ? 0.9 : 0.5} />
+        <Eyes mood={mood} />
+        <ellipse cx="60" cy="73" rx="15" ry="11" fill="var(--pila-light)" />
+        <ellipse cx="54.5" cy="73" rx="2.6" ry="3.8" fill={LINE} />
+        <ellipse cx="65.5" cy="73" rx="2.6" ry="3.8" fill={LINE} />
+        <Mouth mood={mood} />
+      </g>
     </svg>
   );
 }
@@ -129,17 +201,19 @@ export function PilaSays({
   children,
   size = 96,
   coin,
+  alive,
   side = "right",
 }: {
   mood: PilaMood;
   children: ReactNode;
   size?: number;
   coin?: boolean;
+  alive?: boolean;
   side?: "left" | "right";
 }) {
   return (
     <div className={cx("flex items-end gap-3", side === "left" && "flex-row-reverse")}>
-      <Pila mood={mood} size={size} coin={coin} />
+      <Pila mood={mood} size={size} coin={coin} alive={alive} />
       <p
         className={cx(
           "mb-6 max-w-56 rounded-card bg-surface-2 px-3.5 py-2.5 text-sm leading-snug",

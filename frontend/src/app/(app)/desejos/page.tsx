@@ -16,8 +16,10 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
-import type { Forecast } from "@/components/dashboard/types";
+import type { HealthCheck } from "@/components/dashboard/types";
+import { INFO_WISH_FIT } from "@/components/dashboard/info";
 import { Dialog } from "@/components/dialog";
+import { InfoTip } from "@/components/info-tip";
 import { PilaSays } from "@/components/pila";
 import {
   Button,
@@ -28,6 +30,8 @@ import {
   Meter,
   PageHeader,
   Pill,
+  STATUS_COLOR,
+  StatusShape,
   cx,
   inputClass,
   tone,
@@ -48,19 +52,29 @@ import { notify } from "@/lib/signals";
 const WISH_COLOR = "var(--cat-shop)";
 const PRIORITY_LABEL: Record<WishItem["priority"], string> = { 1: "Alta", 2: "Média", 3: "Baixa" };
 
-/** O que dá para dizer do item frente ao que sobra para o dia a dia neste ciclo. */
-function fit(price: number, forecast: Forecast | null): { status: Status; text: string } | null {
-  if (!forecast) return null;
-  const spendable = Number(forecast.spendable);
-  if (price <= spendable) return { status: "ok", text: "Cabe neste ciclo" };
-  if (spendable > 0) return { status: "warn", text: `Faltam ${money(price - spendable)}` };
-  return { status: "bad", text: "Não cabe neste ciclo" };
-}
+/** GET /wishlist/affordability (backend/app/services/affordability.py): a mesma avaliação que o
+ * Pila usa. Considera a sobra no seu ritmo, a saúde financeira, parcelamento e juntar. */
+type Evaluation = {
+  preco: number;
+  veredito: "cabe" | "aperta" | "nao_cabe";
+  titulo: string;
+  motivo: string;
+  recomendacao: string | null;
+  parcelamento: { parcelas: number; valor_parcela: number; acima_do_ideal: boolean } | null;
+  juntar: { por_ciclo: number; ciclos: number } | null;
+};
+type Affordability = {
+  health: HealthCheck;
+  items: Record<string, Evaluation>;
+  /** Na ordem da lista (prioridade): os que cabem juntos sem apertar */
+  together: { itens: string[]; total: number; sobra_depois: number };
+};
+const VERDICT_STATUS: Record<Evaluation["veredito"], Status> = { cabe: "ok", aperta: "warn", nao_cabe: "bad" };
 
 export default function DesejosPage() {
   const [data, setData] = useState<Wishlist | null>(null);
   const [pots, setPots] = useState<SavingsPot[]>([]);
-  const [forecast, setForecast] = useState<Forecast | null>(null);
+  const [afford, setAfford] = useState<Affordability | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<WishItem | "new" | null>(null);
   const [groupDialog, setGroupDialog] = useState<WishGroup | "new" | null>(null);
@@ -76,14 +90,14 @@ export default function DesejosPage() {
     const [w, p] = await Promise.all([api<Wishlist>("/wishlist"), api<SavingsPot[]>("/pots")]);
     setData(w);
     setPots(p);
+    // Preço mudou ou item novo: reavalia. Sem contas conectadas não há previsão e os selos só somem
+    api<Affordability>("/wishlist/affordability")
+      .then(setAfford)
+      .catch(() => setAfford(null));
   }, []);
 
   useEffect(() => {
     load().catch((e) => setError(e.message));
-    // Sem contas conectadas a previsão não existe: os selos de "cabe" só somem
-    api<Forecast>("/dashboard/forecast")
-      .then(setForecast)
-      .catch(() => setForecast(null));
   }, [load]);
 
   async function run(action: () => Promise<unknown>, message?: string) {
@@ -126,10 +140,12 @@ export default function DesejosPage() {
   const wanted = items.filter((i) => i.status === "WANTED");
   const done = items.filter((i) => i.status !== "WANTED");
   const loose = wanted.filter((i) => i.group_id === null);
-  const fitting = forecast ? wanted.filter((i) => Number(i.price) <= Number(forecast.spendable)).length : null;
+  const fitting = afford ? wanted.filter((i) => afford.items[i.id]?.veredito === "cabe").length : null;
+  // Cada um cabe sozinho, mas não necessariamente todos juntos
+  const together = afford ? afford.together.itens.length : null;
 
   const rowProps = {
-    forecast,
+    afford,
     refreshing,
     onRefresh: refresh,
     onEdit: (item: WishItem) => setEditing(item),
@@ -173,24 +189,49 @@ export default function DesejosPage() {
 
         {data && items.length > 0 && (
           <Card data-enter className="grid gap-2">
-            <p className="label">TOTAL DESEJADO</p>
-            <p className="text-[40px] leading-none font-light tracking-[-0.03em] tabular">
+            <p className="label flex items-center gap-1">
+              Total desejado
+              <InfoTip label="Como o app avalia cada desejo">{INFO_WISH_FIT}</InfoTip>
+            </p>
+            <p className="text-[40px] leading-none font-display font-normal tracking-[-0.03em] tabular">
               <span className="text-accent">R$</span>{" "}
               {Number(data.total).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
             <p className="text-sm text-muted">
               {data.count} {data.count === 1 ? "desejo" : "desejos"}
               {groups.length > 0 && ` em ${groups.length} ${groups.length === 1 ? "grupo" : "grupos"}`}
-              {fitting !== null && forecast && (
+              {fitting !== null && together !== null && (
                 <>
-                  ; <strong className="font-semibold text-positive">{fitting}</strong>{" "}
-                  {fitting === 1 ? "cabe" : "cabem"} nos {money(Math.max(Number(forecast.spendable), 0))} livres para o dia
-                  a dia até o fim do ciclo
+                  ;{" "}
+                  {fitting === 0 ? (
+                    "nenhum cabe neste ciclo sem apertar o dia a dia ou a meta de guardar"
+                  ) : together >= fitting ? (
+                    <>
+                      <strong className="font-semibold text-positive">{fitting}</strong>{" "}
+                      {fitting === 1 ? "cabe" : "cabem juntos"} neste ciclo sem apertar o dia a dia nem a meta de guardar
+                    </>
+                  ) : (
+                    <>
+                      <strong className="font-semibold text-positive">{fitting}</strong> cabem um de cada vez; juntos, só{" "}
+                      {together === 0 ? "nenhum" : together === 1 ? "o primeiro" : `os ${together} primeiros`} da lista (
+                      {money(afford!.together.total)}) sem apertar
+                    </>
+                  )}
                 </>
               )}
               .
               {Number(data.bought_total) > 0 && <> Já comprou {money(data.bought_total)} da lista.</>}
             </p>
+            {/* Saúde financeira vem antes do desejo (mesmas frases que o Pila usa) */}
+            {afford && afford.health.tips.length > 0 && (
+              <p
+                style={tone(STATUS_COLOR[afford.health.status])}
+                className="tint flex items-start gap-2 rounded-control px-3 py-2.5 text-sm leading-relaxed"
+              >
+                <StatusShape status={afford.health.status} className="mt-1" />
+                <span>{afford.health.tips[0]}</span>
+              </p>
+            )}
           </Card>
         )}
 
@@ -210,7 +251,7 @@ export default function DesejosPage() {
             <div className="flex items-center gap-3">
               <IconBadge icon={Gift} color="var(--muted)" />
               <h2 className="min-w-0 flex-1 font-semibold">{groups.length > 0 ? "Sem grupo" : "Lista"}</h2>
-              <p className="text-lg font-light tabular">{money(data?.ungrouped_total)}</p>
+              <p className="text-lg font-display font-normal tabular">{money(data?.ungrouped_total)}</p>
             </div>
             <ItemList items={loose} {...rowProps} />
           </Card>
@@ -356,7 +397,7 @@ function GroupCard({
             {group.count} {group.count === 1 ? "desejo" : "desejos"}
           </p>
         </div>
-        <p className="text-lg font-light tabular">{money(total)}</p>
+        <p className="text-lg font-display font-normal tabular">{money(total)}</p>
         <div className="flex">
           <IconButton label={`Editar ${group.name}`} onClick={onEdit}>
             <Pencil />
@@ -391,7 +432,7 @@ function ItemList({
   ...rowProps
 }: {
   items: WishItem[];
-  forecast: Forecast | null;
+  afford: Affordability | null;
   refreshing: number | null;
   onRefresh: (item: WishItem) => void;
   onEdit: (item: WishItem) => void;
@@ -410,7 +451,7 @@ function ItemList({
 
 function ItemRow({
   item,
-  forecast,
+  afford,
   refreshing,
   onRefresh,
   onEdit,
@@ -418,7 +459,7 @@ function ItemRow({
   onRemove,
 }: {
   item: WishItem;
-  forecast: Forecast | null;
+  afford: Affordability | null;
   refreshing: number | null;
   onRefresh: (item: WishItem) => void;
   onEdit: (item: WishItem) => void;
@@ -428,9 +469,7 @@ function ItemRow({
   const price = Number(item.price);
   const first = Number(item.first_price);
   const target = item.target_price === null ? null : Number(item.target_price);
-  const status = fit(price, forecast);
-  const allowance = forecast?.daily_allowance ? Number(forecast.daily_allowance) : null;
-  const days = allowance && allowance > 0 ? Math.ceil(price / allowance) : null;
+  const verdict = item.status === "WANTED" ? afford?.items[item.id] : undefined;
 
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
@@ -456,15 +495,21 @@ function ItemRow({
           {item.notes && <> · {item.notes}</>}
         </p>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {status && (
-            <Pill status={status.status} title={days ? `≈ ${days} dias do seu limite diário` : undefined}>
-              {status.text}
+          {verdict && (
+            <Pill status={VERDICT_STATUS[verdict.veredito]} title={verdict.motivo}>
+              {verdict.titulo}
             </Pill>
           )}
           {target !== null && price <= target && <Pill status="ok">No preço-alvo</Pill>}
           {price < first && <Pill status="ok">Caiu {money(first - price)}</Pill>}
           {price > first && <Pill status="warn">Subiu {money(price - first)}</Pill>}
         </div>
+        {/* Fora do "cabe": o motivo e o que fazer (parcelar ou juntar) */}
+        {verdict && verdict.veredito !== "cabe" && (
+          <p className="mt-1.5 max-w-[62ch] text-xs leading-relaxed text-muted">
+            {verdict.motivo} {verdict.recomendacao}
+          </p>
+        )}
       </div>
       <div className="text-right">
         <p className="font-medium tabular">{money(price)}</p>

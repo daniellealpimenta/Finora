@@ -4,7 +4,8 @@ import { Eye, EyeOff, LockKeyhole, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
-import { ThemeToggle, VaultMark } from "@/components/chrome";
+import { CoinMark, ThemeToggle } from "@/components/chrome";
+import { Guilloche } from "@/components/guilloche";
 import { Pila, type PilaMood } from "@/components/pila";
 import { Button, ErrorNote, cx, inputClass, tone } from "@/components/ui";
 import { ApiError, login } from "@/lib/api";
@@ -17,6 +18,8 @@ export default function LoginPage() {
   // O campo de 2FA só aparece se a API pedir (usuário criado com --totp)
   const [needsTotp, setNeedsTotp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // Digitando a senha (oculta), o Pila fecha os olhos
+  const [typingSecret, setTypingSecret] = useState(false);
   const root = useRef<HTMLElement>(null);
 
   usePageEnter(root, true);
@@ -42,7 +45,7 @@ export default function LoginPage() {
       setError(
         err instanceof ApiError
           ? err.message
-          : "Não foi possível conectar à API. Confira se o backend está rodando em http://localhost:8000.",
+          : "Não foi possível falar com o app. No modo web, confira se o backend está rodando.",
       );
     } finally {
       setLoading(false);
@@ -50,27 +53,31 @@ export default function LoginPage() {
   }
 
   const failed = Boolean(error) && !needsTotp;
-  const mood: PilaMood = failed ? "worried" : loading ? "neutral" : "happy";
+  const shy = typingSecret && !showPassword && !failed && !loading;
+  const mood: PilaMood = failed ? "worried" : loading ? "neutral" : shy ? "shy" : "happy";
   const says = failed
     ? "Hmm, não abriu. Confere a senha?"
     : loading
-      ? "Abrindo…"
-      : "Oi! Eu guardo tudo aqui, só no seu computador.";
+      ? "Abrindo o cofre…"
+      : shy
+        ? "Pode digitar, não estou olhando."
+        : "Oi! Eu guardo tudo aqui, só no seu computador.";
   const input = cx(inputClass, "min-h-11 w-full");
 
   return (
     <main ref={root} className="grid min-h-screen md:grid-cols-2">
       {/* Painel da marca: sempre grafite, nos dois temas */}
-      <section className="theme-dark flex flex-col justify-between gap-8 bg-background p-6 text-foreground sm:p-10 lg:p-14">
-        <div className="flex items-center gap-2.5 font-bold">
-          <VaultMark />
+      <section className="theme-dark relative isolate flex flex-col justify-between gap-8 overflow-hidden bg-background p-6 text-foreground sm:p-10 lg:p-14">
+        <Guilloche className="-z-10" />
+        <div className="flex items-center gap-2.5 font-display text-lg font-bold">
+          <CoinMark />
           ManagerFinance
         </div>
 
         <div data-enter className="grid gap-6">
           <div className="flex items-end gap-4">
-            <Pila mood={mood} size={168} className="hidden sm:block" />
-            <Pila mood={mood} size={104} className="sm:hidden" />
+            <Pila mood={mood} size={168} alive className="hidden sm:block" />
+            <Pila mood={mood} size={104} alive className="sm:hidden" />
             <p
               aria-live="polite"
               className="mb-14 max-w-60 rounded-card rounded-bl-[4px] bg-surface-2 px-4 py-3 text-[15px] leading-snug"
@@ -79,7 +86,7 @@ export default function LoginPage() {
             </p>
           </div>
           <div className="grid max-w-md gap-2">
-            <h1 className="text-[clamp(28px,4vw,40px)] leading-[1.1] font-semibold tracking-[-0.02em]">
+            <h1 className="font-display text-[clamp(30px,4.4vw,46px)] leading-[1.05] font-bold tracking-[-0.02em]">
               Suas finanças, guardadas no seu computador.
             </h1>
             <p className="text-base leading-relaxed text-muted">
@@ -90,13 +97,13 @@ export default function LoginPage() {
 
         <ul className="flex flex-wrap gap-2 text-[13px] font-semibold">
           <li style={tone("var(--positive)")} className="tint rounded-full px-3 py-1.5">
-            API só em 127.0.0.1
+            Fica só no seu computador
           </li>
           <li style={tone("var(--cat-home)")} className="tint rounded-full px-3 py-1.5">
-            2FA opcional
+            Login com 2FA
           </li>
           <li style={tone("var(--accent)")} className="tint rounded-full px-3 py-1.5">
-            Open Finance
+            Bancos via Open Finance
           </li>
         </ul>
       </section>
@@ -111,7 +118,7 @@ export default function LoginPage() {
           className="grid w-full max-w-sm gap-4 rounded-card border border-card-edge bg-surface p-6 sm:p-8"
         >
           <div className="grid gap-1">
-            <h2 className="text-2xl font-semibold tracking-[-0.02em]">Entrar</h2>
+            <h2 className="font-display text-[28px] font-bold tracking-[-0.02em]">Entrar</h2>
             <p className="text-sm text-muted">Bem-vindo de volta.</p>
           </div>
           <div className="grid gap-1.5">
@@ -131,6 +138,8 @@ export default function LoginPage() {
                 type={showPassword ? "text" : "password"}
                 required
                 autoComplete="current-password"
+                onFocus={() => setTypingSecret(true)}
+                onBlur={() => setTypingSecret(false)}
                 className={cx(input, "pr-11")}
               />
               <button

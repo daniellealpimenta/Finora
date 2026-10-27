@@ -24,3 +24,7 @@ Thumbs.db
 *.db
 *.db-wal
 *.db-shm
+
+# Build do .exe (PyInstaller)
+backend/build/
+backend/dist/

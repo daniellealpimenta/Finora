@@ -1,38 +1,39 @@
 @import "tailwindcss";
 
-/* Tokens: valores e motivos em MASTER.md (raiz do projeto). Tema claro em :root; o escuro vale
-   pelo sistema (prefers-color-scheme) ou pela escolha manual (data-theme em <html>). */
+/* Tokens: valores e motivos em MASTER.md (raiz do projeto). Tema claro em :root (revisto em
+   2026-10-27: mais contraste e cor); o escuro vale pelo sistema (prefers-color-scheme) ou pela
+   escolha manual (data-theme em <html>). */
 :root {
-  --background: #dfe4e9;
-  --foreground: #0e141a;
+  --background: #d3dae2;
+  --foreground: #0a1016;
   --surface: #ffffff;
-  --surface-2: #e6ebef;
-  --border: #c3ccd4;
-  --grid: #dce2e7;
-  --muted: #4a5560;
-  --accent: #7a5718;
+  --surface-2: #e4e9ef;
+  --border: #b4c0cc;
+  --grid: #d6dde4;
+  --muted: #3b4754;
+  --accent: #8a5300;
   --accent-fg: #ffffff;
-  --positive: #0a7360;
-  --negative: #b53b23;
-  --warning: #935004;
+  --positive: #00745b;
+  --negative: #c1311a;
+  --warning: #9a5000;
   --series-ref: #8a949e;
   /* Cores de detalhe: só ícones, selos, barras finas e palavras marcadas */
-  --cat-home: #2c65b8;
-  --cat-food: #9b5417;
-  --cat-move: #6d4fc9;
-  --cat-care: #ad396c;
-  --cat-fun: #197080;
-  --cat-shop: #556e10;
-  --cat-fin: #5a6773;
+  --cat-home: #1d5fd6;
+  --cat-food: #a34600;
+  --cat-move: #6436e0;
+  --cat-care: #c01f6a;
+  --cat-fun: #006b7c;
+  --cat-shop: #4a7300;
+  --cat-fin: #4a5868;
   /* Contorno dos cards e força do tingido: o claro precisa de mais, o escuro de nada */
-  --card-edge: #cfd7de;
-  --tint: 20%;
+  --card-edge: #b9c5d0;
+  --tint: 22%;
 
   /* Pila, o mascote: ilustração, igual nos dois temas */
   --pila-body: #f28ab5;
-  --pila-light: #f7a8c9;
+  --pila-light: #f9b6d2;
   --pila-ear: #e06f9f;
-  --pila-leg: #c9618f;
+  --pila-blush: #e0567f;
   --pila-line: #8f2f5a;
   --pila-ink: #3a1426;
   --coin: #d2ac6a;
@@ -147,6 +148,7 @@
   --radius-control: var(--r-control);
   --radius-card: var(--r-card);
   --font-sans: var(--font-manrope), "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-bricolage), var(--font-manrope), "Segoe UI", system-ui, sans-serif;
 }
 
 body {
@@ -200,7 +202,6 @@ summary,
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
-  letter-spacing: 0.04em;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -210,5 +211,28 @@ summary,
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Contador mecânico (components/odometer.tsx): cada dígito é uma coluna 0–9 que rola */
+/* Separadores na mesma caixa dos dígitos, para "." e "," ficarem alinhados com eles */
+.odometer-digit,
+.odometer-sep {
+  display: inline-block;
+  height: 1em;
+  line-height: 1;
+  overflow: hidden;
+  vertical-align: top;
+}
+.odometer-col {
+  display: grid;
+  transition: transform 900ms cubic-bezier(0.2, 0.9, 0.1, 1);
+}
+.odometer-col > span {
+  height: 1em;
+}
+@media (prefers-reduced-motion: reduce) {
+  .odometer-col {
+    transition: none;
   }
 }

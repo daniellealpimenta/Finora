@@ -66,6 +66,26 @@ cd frontend && npm install && npm run dev                 # app: http://localhos
 Sempre que houver migração nova (pasta `backend/migrations/versions`), rode dentro de
 `backend/`: `uv run alembic upgrade head`.
 
+### Programa para Windows (.exe)
+
+O mesmo código também vira um programa com janela própria, sem terminais nem navegador.
+O modo web acima continua funcionando igual; os dois usam o mesmo banco (só não rode os dois
+ao mesmo tempo).
+
+```powershell
+.\scripts\build-desktop.ps1      # gera o .exe e instala, com atalho no Menu Iniciar
+```
+
+- Uma vez: copie o `.env` do projeto para `%LOCALAPPDATA%\ManagerFinance\.env`
+  (o programa não roda dentro da pasta do projeto).
+- Fica instalado em `%LOCALAPPDATA%\Programs\ManagerFinance` (fora do OneDrive). Para fixar
+  na barra de tarefas: Menu Iniciar → ManagerFinance → botão direito → Fixar na barra de
+  tarefas. Reinstalar (rodar o script de novo, com o app fechado) mantém o atalho.
+- O programa aplica as migrações sozinho, guardando antes `managerfinance.db.bak`.
+- O sync automático roda enquanto a janela estiver aberta. Log em
+  `%LOCALAPPDATA%\ManagerFinance\logs\app.log`.
+- Mudou o código? Rode o script de novo.
+
 ## Como usar
 
 - **Contas → Conectar banco**: abre o widget da Pluggy. Marque "Mostrar bancos de teste"

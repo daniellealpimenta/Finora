@@ -32,6 +32,8 @@ import {
   type CashflowPoint,
 } from "@/components/charts";
 import { PilaSays, type PilaMood } from "@/components/pila";
+import { Guilloche } from "@/components/guilloche";
+import { Odometer } from "@/components/odometer";
 import {
   Button,
   Card,
@@ -48,7 +50,7 @@ import {
 } from "@/components/ui";
 import type { Category, Installment, SavingsPot } from "@/lib/api";
 import { cycleName, cycleRange } from "@/lib/cycle";
-import { earnedText, money, monthLabel, percent, shiftMonth, shortDate } from "@/lib/format";
+import { earnedText, money, outflow, monthLabel, percent, shiftMonth, shortDate } from "@/lib/format";
 import { wiggle } from "@/lib/motion";
 import {
   INFO_CASHFLOW,
@@ -212,7 +214,7 @@ function IndexHeader({
     <div className="flex items-center justify-between gap-2">
       <span className="flex items-center gap-2.5">
         <IconBadge icon={icon} color={color} size="sm" />
-        <span className="label uppercase">{title}</span>
+        <h2 className="text-[15px] font-semibold">{title}</h2>
         <span className="-ml-1.5">
           <InfoTip label={title}>{info}</InfoTip>
         </span>
@@ -260,7 +262,7 @@ export function HealthCard({ health }: { health: Summary["health"] }) {
             transform="rotate(-90 32 32)"
           />
         </svg>
-        <p className="text-[28px] leading-tight font-light tracking-[-0.02em] tabular">
+        <p className="text-[28px] leading-tight font-display font-normal tracking-[-0.02em] tabular">
           <span data-score>{health.score}</span>
           <span className="text-sm font-medium tracking-normal text-muted"> /100</span>
         </p>
@@ -288,7 +290,7 @@ export function ReserveCard({ months, avg }: { months: number | null; avg: numbe
   return (
     <Card data-enter className="grid content-start gap-4">
       <IndexHeader icon={Shield} color="var(--cat-home)" title="Reserva de emergência" status={status} info={INFO_RESERVE} />
-      <p className="text-[28px] leading-tight font-light tracking-[-0.02em] tabular">
+      <p className="text-[28px] leading-tight font-display font-normal tracking-[-0.02em] tabular">
         {months === null ? (
           <span className="text-xl text-muted">sem dados</span>
         ) : (
@@ -304,7 +306,7 @@ export function ReserveCard({ months, avg }: { months: number | null; avg: numbe
           color={status ? STATUS_COLOR[status] : "var(--muted)"}
           label={`${months ?? 0} de ${RESERVE_GOAL_MONTHS} meses`}
         />
-        <div className="flex justify-between text-[11px] text-muted tabular">
+        <div className="flex justify-between text-xs text-muted tabular">
           <span>0</span>
           <span>meta: {RESERVE_GOAL_MONTHS} meses</span>
         </div>
@@ -332,7 +334,7 @@ export function FixedCard({
   return (
     <Card data-enter className="grid content-start gap-4">
       <IndexHeader icon={Repeat} color="var(--cat-move)" title="Gastos fixos" status={status} info={INFO_FIXED} />
-      <p className="text-[28px] leading-tight font-light tracking-[-0.02em] tabular">
+      <p className="text-[28px] leading-tight font-display font-normal tracking-[-0.02em] tabular">
         {commitment === null ? money(total) : percent(commitment)}
         <span className="text-sm font-medium tracking-normal text-muted">
           {commitment === null ? " por ciclo" : " da renda"}
@@ -345,7 +347,7 @@ export function FixedCard({
           color={status ? STATUS_COLOR[status] : "var(--muted)"}
           label={commitment === null ? undefined : `${percent(commitment)} da renda`}
         />
-        <div className="flex justify-between text-[11px] text-muted tabular">
+        <div className="flex justify-between text-xs text-muted tabular">
           <span>0%</span>
           <span>ideal: até {percent(FIXED_IDEAL)}</span>
         </div>
@@ -598,9 +600,11 @@ export function HeroCard({ data, keyById }: { data: Data; keyById: Map<number, C
   }
 
   return (
-    <Card data-enter className="grid gap-6 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+    <Card data-enter className="relative isolate grid gap-6 overflow-hidden md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+      {/* O padrão das cédulas atrás do número; só neste card e no login */}
+      <Guilloche className="-z-10" x={0.3} y={0.2} />
       <div className="grid content-start gap-3">
-        <p className="label flex items-center gap-1 uppercase">
+        <p className="label flex items-center gap-1">
           {isCurrent ? "Livre agora" : `Terminou o ciclo de ${name} com`}
           <InfoTip label={isCurrent ? "Livre agora" : "Terminou com"}>
             {isCurrent ? INFO_CURRENT_BALANCE : INFO_MONTH_LEFT}
@@ -608,17 +612,15 @@ export function HeroCard({ data, keyById }: { data: Data; keyById: Map<number, C
         </p>
         <p
           className={cx(
-            "text-[clamp(40px,7vw,60px)] leading-[1.05] font-light tracking-[-0.03em] tabular",
+            "text-[clamp(40px,7vw,60px)] leading-[1.05] font-display font-normal tracking-[-0.03em] tabular",
             value < 0 && "text-negative",
           )}
         >
           <span className="mr-1.5 align-[0.65em] text-[0.42em] font-semibold tracking-normal text-accent">
             {value < 0 ? "−R$" : "R$"}
           </span>
-          <span data-hero-int>{intPart(value)}</span>
-          <span data-hero-cents className="text-[0.45em] font-normal text-muted">
-            {centsPart(value)}
-          </span>
+          <Odometer text={intPart(value)} />
+          <Odometer text={centsPart(value)} className="text-[0.45em] font-normal text-muted" />
         </p>
         {isCurrent ? (
           <InAccountNow summary={s} />
@@ -641,7 +643,7 @@ export function HeroCard({ data, keyById }: { data: Data; keyById: Map<number, C
 }
 
 
-const signed = (v: number) => (v < 0 ? `−${money(-v)}` : `+${money(v)}`);
+const signed = (v: number) => (v < 0 ? outflow(-v) : `+${money(v)}`);
 
 /** A conta do ciclo, de cima para baixo: começou com, entradas, saídas, terminou com. */
 function CycleRows({ data }: { data: Data }) {
@@ -677,21 +679,21 @@ function CycleRows({ data }: { data: Data }) {
           icon={ArrowDownRight}
           color="var(--negative)"
           label="Gastos pela conta"
-          value={`−${money(f.spent)}`}
+          value={outflow(f.spent)}
           note={<span className="text-muted">Pix, débito e boletos</span>}
         />
         <HeroRow
           icon={CreditCard}
           color="var(--cat-move)"
           label={isCurrent ? "Faturas do ciclo até agora" : "Faturas do ciclo"}
-          value={`−${money(f.card_bills)}`}
+          value={outflow(f.card_bills)}
           note={<span className="text-muted">{billNote}</span>}
         />
         <HeroRow
           icon={PiggyBank}
           color="var(--cat-care)"
           label="Guardado nos cofrinhos"
-          value={f.saved >= 0 ? `−${money(f.saved)}` : `+${money(-f.saved)}`}
+          value={f.saved >= 0 ? outflow(f.saved) : `+${money(-f.saved)}`}
           note={<span className="text-muted">{f.saved >= 0 ? "aportes menos resgates" : "resgatou mais do que guardou"}</span>}
         />
         {Math.abs(f.other) >= 0.01 && (
@@ -718,8 +720,21 @@ function CycleRows({ data }: { data: Data }) {
 /** Ciclo atual: o saldo real das contas em destaque e a conta que leva dele ao "livre agora". */
 function InAccountNow({ summary: s }: { summary: Summary }) {
   const reserved = s.liquid_balance - s.flow.ended_with;
+  const cycleNote = (
+    <>
+      Ciclo de {cycleName(s.cycle.key)}, {cycleRange(s.cycle)}. Cofrinhos ficam fora: {money(s.invested)}.
+    </>
+  );
+  // Nada comprometido: "em conta" é o próprio número herói; repetir só faz ruído
+  if (Math.abs(reserved) < 0.005) {
+    return (
+      <p className="text-xs leading-relaxed text-muted">
+        Nada comprometido com faturas: todo o saldo em conta está livre. {cycleNote}
+      </p>
+    );
+  }
   return (
-    <div className="grid gap-2 rounded-control border border-border p-3.5">
+    <div className="grid gap-2 rounded-control bg-surface-2 p-3.5">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <span className="flex items-center gap-2.5">
           <IconBadge icon={Wallet} color="var(--cat-fun)" size="sm" />
@@ -727,7 +742,7 @@ function InAccountNow({ summary: s }: { summary: Summary }) {
         </span>
         <span
           className={cx(
-            "text-[clamp(24px,4vw,30px)] leading-tight font-light tracking-[-0.02em] tabular",
+            "text-[clamp(24px,4vw,30px)] leading-tight font-display font-normal tracking-[-0.02em] tabular",
             s.liquid_balance < 0 && "text-negative",
           )}
         >
@@ -741,9 +756,7 @@ function InAccountNow({ summary: s }: { summary: Summary }) {
           ? `. Próxima fatura: ${money(s.next_bill_amount)}, vence ${shortDate(s.next_bill_due)}.`
           : "."}
       </p>
-      <p className="text-[11px] text-muted">
-        Ciclo de {cycleName(s.cycle.key)}, {cycleRange(s.cycle)}. Cofrinhos ficam fora: {money(s.invested)}.
-      </p>
+      <p className="text-xs text-muted">{cycleNote}</p>
     </div>
   );
 }
@@ -823,7 +836,7 @@ function CycleNotes({ summary: s }: { summary: Summary }) {
   if (!s.notes?.length) return null;
   return (
     <div className="grid gap-1.5">
-      <p className="label uppercase">Para entender este resultado</p>
+      <p className="label">Para entender este resultado</p>
       <ul className="grid gap-1.5">
         {s.notes.map((n, i) => {
           const warn = n.kind === "shifted_out" || n.kind === "doubled";
@@ -966,7 +979,7 @@ export function SavingsCard({
       ) : (
         <>
           <div className="grid gap-0.5">
-            <p className="text-[28px] leading-tight font-light tracking-[-0.02em] tabular">{money(total)}</p>
+            <p className="text-[28px] leading-tight font-display font-normal tracking-[-0.02em] tabular">{money(total)}</p>
             {Math.abs(saved) >= 0.01 && (
               <p className={cx("text-xs font-semibold tabular", saved > 0 ? "text-positive" : "text-muted")}>
                 {saved > 0
@@ -1146,12 +1159,12 @@ export function PaceCard({ data }: { data: Data }) {
       <div className="mb-4 grid grid-cols-2 gap-x-4 gap-y-3">
         <div className="grid gap-0.5">
           <span className="label">{isCurrent ? "Gasto até hoje" : "Gasto no ciclo"}</span>
-          <span className="text-[26px] leading-tight font-light tracking-[-0.02em] tabular">{money(spent)}</span>
+          <span className="text-[26px] leading-tight font-display font-normal tracking-[-0.02em] tabular">{money(spent)}</span>
           <span className="text-xs text-muted tabular">{money(spent / Math.max(day, 1))} por dia</span>
         </div>
         <div className="grid gap-0.5">
           <span className="label">{isCurrent ? `Ciclo anterior no dia ${day}` : "Ciclo anterior"}</span>
-          <span className="text-[26px] leading-tight font-light tracking-[-0.02em] text-muted tabular">
+          <span className="text-[26px] leading-tight font-display font-normal tracking-[-0.02em] text-muted tabular">
             {prevSame === null ? "—" : money(isCurrent ? prevSame : prevTotal)}
           </span>
           <span className="text-xs text-muted tabular">

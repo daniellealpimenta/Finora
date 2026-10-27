@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import CategoryKind, WishItem, WishStatus
-from app.services import analytics, forecast, insights, llm
+from app.services import affordability, analytics, insights, llm
 from app.services import cycles as cycle_service
 from app.services import wishlist as wish_service
 from app.services.cycles import shift_key
@@ -57,9 +57,11 @@ def _resumo(db: Session, today: date, args: dict) -> dict:
 
 
 def _previsao(db: Session, today: date, args: dict) -> dict:
-    f = forecast.forecast(db, today)
+    ctx = affordability.context(db, today)
+    f = dict(ctx["forecast"])
     if not f["tithe"]["rate"]:
         del f["tithe"]  # dízimo desligado: só confundiria o modelo
+    f["saude"] = ctx["health"]
     return f
 
 
@@ -91,8 +93,11 @@ def _desejos(db: Session, today: date, args: dict) -> dict:
         )
     )
     totals = wish_service.totals(items)
+    ctx = affordability.context(db, today)
     return {
         "total_desejado": totals["wanted"],
+        # Saúde financeira e veredito de cada item já calculados: o modelo só lê
+        "saude": ctx["health"],
         "itens": [
             {
                 "nome": i.name,
@@ -100,11 +105,27 @@ def _desejos(db: Session, today: date, args: dict) -> dict:
                 "grupo": i.group.name if i.group else None,
                 "prioridade": {1: "alta", 2: "média", 3: "baixa"}.get(i.priority),
                 "preco_alvo": i.target_price,
+                "avaliacao": affordability.evaluate(i.price, ctx),
             }
             for i in items
             if i.status == WishStatus.WANTED
         ][:30],
+        # Cada `avaliacao` é do item sozinho; aqui, quais cabem juntos, por prioridade
+        "cabem_juntos": affordability.together(
+            [(i.name, i.price) for i in items if i.status == WishStatus.WANTED], ctx
+        ),
     }
+
+
+def _avaliar_compra(db: Session, today: date, args: dict) -> dict:
+    try:
+        price = Decimal(str(args.get("valor")))
+    except (ArithmeticError, ValueError) as e:
+        raise ToolError("Informe `valor` em reais, como 1299.90.") from e
+    if not price.is_finite() or price <= 0:
+        raise ToolError("Informe `valor` em reais, maior que zero.")
+    ctx = affordability.context(db, today)
+    return {"saude": ctx["health"], **affordability.evaluate(price, ctx)}
 
 
 def _transacoes(db: Session, today: date, args: dict) -> dict:
@@ -189,8 +210,18 @@ TOOLS: dict[str, tuple[Callable, str, str, dict]] = {
     "desejos": (
         _desejos,
         "Abrindo a lista de desejos",
-        "Itens da lista de desejos ainda não comprados, com preço, grupo e prioridade.",
+        "Itens da lista de desejos ainda não comprados, com preço, grupo, prioridade e a "
+        "avaliação de cada um (cabe, aperta ou não cabe neste ciclo, parcelamento sugerido, "
+        "quanto tempo para juntar) junto da saúde financeira.",
         {},
+    ),
+    "avaliar_compra": (
+        _avaliar_compra,
+        "Vendo se a compra cabe",
+        "Avalia uma compra de qualquer valor que não está na lista de desejos: se cabe neste "
+        "ciclo, se aperta, se não cabe, com a saúde financeira, o parcelamento sugerido e "
+        "quanto tempo para juntar.",
+        {"valor": {"type": "number", "description": "Preço à vista em reais (ex.: 1299.90)."}},
     ),
     "buscar_transacoes": (
         _transacoes,
@@ -273,8 +304,17 @@ Regras:
   fixas, parcelas, dízimo e da meta de guardar (savings.goal), que já fica separada.
 - "Até a próxima entrada" (until_income) é o que o dinheiro de hoje precisa cobrir até o
   salário cair; use isso quando a pergunta for sobre os próximos dias.
-- Para "posso comprar X?", compare o preço com o "dá para gastar" e com o "até a próxima
-  entrada". Se a compra só cabe comendo a meta de guardar, diga isso.
+- Para "posso comprar X?" ou "o que da lista de desejos dá para comprar?", use a avaliação
+  pronta: a ferramenta desejos (cada item traz `avaliacao`) ou avaliar_compra para um valor
+  qualquer. Não compare preços por conta própria. Diga o veredito (cabe, aperta, não cabe), o
+  motivo e a recomendação, nessa ordem.
+- Saúde financeira vem antes do desejo: se a reserva de emergência estiver abaixo de 3 meses ou
+  os compromissos fixos acima de 30% da renda, diga isso antes de sugerir qualquer compra.
+- Item caro demais: se a avaliação trouxer parcelamento, diga em quantas vezes e de quanto fica
+  a parcela, lembrando de conferir se é sem juros. Se trouxer `juntar`, diga em quantos ciclos
+  dá para juntar e quanto guardar por ciclo; sugira criar um cofrinho para isso.
+- Cada avaliação é do item sozinho. Se perguntarem por mais de um, use `cabem_juntos`: só os
+  itens listados ali cabem juntos sem apertar, na ordem de prioridade.
 - Recomendações práticas, baseadas nos dados do usuário. Não indique produtos financeiros
   específicos (ações, fundos, bancos)."""
 

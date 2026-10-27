@@ -1,15 +1,6 @@
 "use client";
 
-import {
-  ArrowUpRight,
-  CalendarClock,
-  CreditCard,
-  HandHeart,
-  PiggyBank,
-  Repeat,
-  SlidersHorizontal,
-  Wallet,
-} from "lucide-react";
+import { CalendarClock, SlidersHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Dialog } from "@/components/dialog";
@@ -28,7 +19,6 @@ import {
 import { api } from "@/lib/api";
 import { cycleName } from "@/lib/cycle";
 import { money, percent, shortDate } from "@/lib/format";
-import { HeroRow } from "./cards";
 import { INFO_FORECAST } from "./info";
 import type { Forecast, Planning } from "./types";
 
@@ -113,87 +103,91 @@ export function ForecastCard({ data, onChanged }: { data: Forecast; onChanged: (
         Previsão do ciclo
       </CardTitle>
       <div className="grid gap-6 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-        <ul className="grid content-start divide-y divide-border" aria-label="Conta da previsão">
-          <HeroRow
-            icon={Wallet}
-            color="var(--muted)"
-            label="Livre agora"
-            value={money(f.available_now)}
-            note={<span className="text-muted">já aconteceu</span>}
+        {/* A conta inteira, linha a linha: todas as parcelas aparecem, mesmo valendo zero */}
+        <div className="grid content-start gap-1" role="table" aria-label="Conta da previsão">
+          <EqRow op="" label="Livre agora" note="em conta, já tirando as faturas a pagar" value={money(f.available_now)} />
+          {pending.length > 0 ? (
+            pending.map((i) => (
+              <EqRow
+                key={i.key}
+                op="+"
+                label={i.label}
+                note={`previsto, ${ago(i.expected_date)}${i.until ? `, conta até o ciclo de ${cycleName(i.until)}` : ""}`}
+                value={money(i.remaining)}
+                tone="positive"
+              />
+            ))
+          ) : (
+            <EqRow op="+" label="Entradas que ainda vêm" note="nada previsto até o fim do ciclo" value={money(0)} />
+          )}
+          <EqRow
+            op="−"
+            label="Contas fixas que faltam"
+            note={Number(f.fixed_left) > 0 ? f.fixed.map((x) => short(x.name)).join(", ") : "todas já caíram neste ciclo"}
+            value={money(f.fixed_left)}
           />
-          {pending.map((i) => (
-            <HeroRow
-              key={i.key}
-              icon={ArrowUpRight}
-              color="var(--positive)"
-              label={i.label}
-              value={`+${money(i.remaining)}`}
-              note={
-                <span className="text-muted">
-                  previsto, {ago(i.expected_date)}
-                  {i.until ? `, conta até o ciclo de ${cycleName(i.until)}` : ""}
-                </span>
-              }
-            />
-          ))}
-          {Number(f.fixed_left) > 0 && (
-            <HeroRow
-              icon={Repeat}
-              color="var(--cat-fun)"
-              label="Contas fixas que faltam"
-              value={`−${money(f.fixed_left)}`}
-              note={<span className="text-muted">{f.fixed.map((x) => short(x.name)).join(", ")}</span>}
-            />
-          )}
-          {Number(f.installments_left) > 0 && (
-            <HeroRow
-              icon={CreditCard}
-              color="var(--cat-move)"
-              label="Parcelas que faltam"
-              value={`−${money(f.installments_left)}`}
-              note={<span className="text-muted">{f.installments.map((x) => short(x.name)).join(", ")}</span>}
-            />
-          )}
+          <EqRow
+            op="−"
+            label="Parcelas que faltam"
+            note={
+              Number(f.installments_left) > 0
+                ? f.installments.map((x) => short(x.name)).join(", ")
+                : "nenhuma parcela por entrar na fatura"
+            }
+            value={money(f.installments_left)}
+          />
           {f.tithe.rate > 0 && (
-            <HeroRow
-              icon={HandHeart}
-              color="var(--cat-shop)"
-              label="Dízimo"
-              value={`−${money(f.tithe.left)}`}
-              note={
-                <span className="text-muted">
-                  {percent(f.tithe.rate)} de {money(f.tithe.base)}
-                  {Number(f.tithe.given) > 0 ? `, ${money(f.tithe.given)} já dados` : ""}
-                </span>
-              }
+            <EqRow
+              op="−"
+              label="Dízimo que falta"
+              note={`${percent(f.tithe.rate)} de ${money(f.tithe.base)}${Number(f.tithe.given) > 0 ? `, ${money(f.tithe.given)} já dados` : ""}`}
+              value={money(f.tithe.left)}
             />
           )}
-          {goal > 0 && (
-            <HeroRow
-              icon={PiggyBank}
-              color="var(--cat-care)"
-              label="Meta de guardar"
-              value={`−${money(s.left)}`}
-              note={
-                <span className="text-muted">
-                  {money(goal)}: {goalNote}
-                  {Number(s.saved) > 0 ? `, ${money(s.saved)} já guardados` : ""}
-                </span>
-              }
+          <EqRow
+            op="−"
+            label="Meta de guardar que falta"
+            note={
+              goal > 0
+                ? `${money(goal)}: ${goalNote}${Number(s.saved) > 0 ? `, ${money(s.saved)} já guardados` : ""}`
+                : "sem meta de guardar (Ajustar)"
+            }
+            value={money(s.left)}
+          />
+          <EqRow
+            op="="
+            label="Dá para gastar no dia a dia"
+            value={money(spendable)}
+            total
+            tone={spendable < 0 ? "negative" : undefined}
+          />
+          {f.days_left > 0 && allowance !== null && (
+            <EqRow
+              op="÷"
+              label={f.days_left === 1 ? "1 dia até o fim do ciclo" : `${f.days_left} dias até o fim do ciclo`}
+              note="o que dá para gastar por dia"
+              value={`${money(allowance)}/dia`}
             />
           )}
-          <li className="flex items-center justify-between gap-3 py-3 last:pb-0">
-            <span className="text-sm font-semibold">Dá para gastar no dia a dia</span>
-            <span className={cx("text-[17px] font-semibold tabular", spendable < 0 && "text-negative")}>
-              {money(spendable)}
-            </span>
-          </li>
-        </ul>
+          <EqRow
+            op="−"
+            label="Seu ritmo do dia a dia"
+            note={`${money(typical)}/dia × ${f.days_left} dias, pela média dos 3 ciclos anteriores`}
+            value={money(f.variable_left)}
+          />
+          <EqRow
+            op="="
+            label={extra >= 0 ? "Sobra além da meta" : "Falta para cumprir a meta"}
+            value={money(Math.abs(extra))}
+            total
+            tone={extra < 0 ? "negative" : "positive"}
+          />
+        </div>
 
         <div className="grid content-start gap-4">
           <div className="grid gap-1">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="label uppercase">Dá para gastar no dia a dia</p>
+              <p className="label">Dá para gastar no dia a dia</p>
               <div role="group" aria-label="Mostrar valor" className="inline-flex rounded-control bg-surface-2 p-0.5 text-xs font-semibold">
                 {(
                   [
@@ -216,7 +210,7 @@ export function ForecastCard({ data, onChanged }: { data: Forecast; onChanged: (
                 ))}
               </div>
             </div>
-            <p className="text-[clamp(32px,5vw,44px)] leading-tight font-light tracking-[-0.02em] tabular">
+            <p className="text-[clamp(32px,5vw,44px)] leading-tight font-display font-normal tracking-[-0.02em] tabular">
               {view === "total"
                 ? money(Math.max(spendable, 0))
                 : allowance === null
@@ -291,6 +285,7 @@ export function ForecastCard({ data, onChanged }: { data: Forecast; onChanged: (
               {s.history_rate !== null ? `; nos 3 últimos ciclos foram ${percent(s.history_rate)}.` : "."}
             </p>
           )}
+          <HealthBlock health={f.health} />
           <p className="text-xs text-muted">É uma estimativa pelo seu histórico. Cada valor previsto vira real quando acontece.</p>
         </div>
       </div>
@@ -469,5 +464,97 @@ function PlanningDialog({ forecast, onClose, onSaved }: { forecast: Forecast; on
         </form>
       )}
     </Dialog>
+  );
+}
+
+/** Uma linha da conta: operação, o que é (e de onde vem) e o valor. */
+function EqRow({
+  op,
+  label,
+  note,
+  value,
+  total,
+  tone: color,
+}: {
+  op: string;
+  label: string;
+  note?: string;
+  value: string;
+  /** Linha de resultado (=): mais forte e com linha em cima */
+  total?: boolean;
+  tone?: "positive" | "negative";
+}) {
+  return (
+    <div
+      role="row"
+      className={cx(
+        "grid grid-cols-[1.25rem_minmax(0,1fr)_auto] items-baseline gap-x-2 py-1.5",
+        total && "mt-1 border-t border-border pt-2.5",
+      )}
+    >
+      <span role="cell" aria-hidden className="font-display text-base font-bold text-muted">
+        {op}
+      </span>
+      <span role="cell" className="min-w-0">
+        <span className={cx("block text-sm", total && "font-semibold")}>{label}</span>
+        {note && <span className="block truncate text-xs text-muted">{note}</span>}
+      </span>
+      <span
+        role="cell"
+        className={cx(
+          "text-right whitespace-nowrap tabular",
+          total ? "text-[17px] font-semibold" : "text-[15px] font-medium",
+          color === "positive" && "text-positive",
+          color === "negative" && "text-negative",
+        )}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+const HEALTH_LABEL: Record<Status, string> = { ok: "em dia", warn: "atenção", bad: "frágil" };
+
+/** Saúde financeira ao lado da conta: reserva, compromissos e o que fazer (frases do backend). */
+function HealthBlock({ health: h }: { health: Forecast["health"] }) {
+  return (
+    <div className="grid gap-2 rounded-control bg-surface-2 px-3.5 py-3">
+      <p className="flex items-center justify-between gap-2 text-sm font-semibold">
+        Saúde financeira
+        <span
+          style={tone(STATUS_COLOR[h.status])}
+          className="tint inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs"
+        >
+          <StatusShape status={h.status} />
+          {HEALTH_LABEL[h.status]}
+        </span>
+      </p>
+      <ul className="grid gap-1 text-sm">
+        <li style={tone(STATUS_COLOR[h.reserve_status])} className="flex flex-wrap items-center gap-x-2">
+          <StatusShape status={h.reserve_status} className="text-[var(--c)]" />
+          Reserva de emergência:
+          <strong className="font-semibold tabular">
+            {h.reserve_months === null
+              ? "—"
+              : `${h.reserve_months.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} meses`}
+          </strong>
+          <span className="text-muted">(meta: 6)</span>
+        </li>
+        <li style={tone(STATUS_COLOR[h.commitment_status])} className="flex flex-wrap items-center gap-x-2">
+          <StatusShape status={h.commitment_status} className="text-[var(--c)]" />
+          Fixos e parcelas:
+          <strong className="font-semibold tabular">{h.commitment === null ? "—" : percent(h.commitment)}</strong>
+          <span className="text-muted">da renda (ideal: até 30%)</span>
+        </li>
+      </ul>
+      {h.tips.length > 0 && (
+        <ul className="grid gap-1 border-t border-border pt-2 text-sm text-muted">
+          {h.tips.map((t) => (
+            <li key={t}>{t}</li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

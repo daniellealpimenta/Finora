@@ -118,7 +118,7 @@ export function PageHeader({
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div className="grid gap-1">
-        <h1 className="text-2xl font-semibold tracking-[-0.02em]">{title}</h1>
+        <h1 className="font-display text-[28px] leading-tight font-bold tracking-[-0.02em]">{title}</h1>
         {description && <p className="max-w-prose text-sm text-muted">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -148,7 +148,7 @@ export function MonthPicker({
       </IconButton>
       <span className="grid min-w-40 justify-items-center text-center" aria-live="polite">
         <span className="text-sm font-semibold tabular">{label ?? monthLabel(value)}</span>
-        {caption && <span className="text-[11px] text-muted tabular">{caption}</span>}
+        {caption && <span className="text-xs text-muted tabular">{caption}</span>}
       </span>
       <IconButton label={`Próximo ${unit.toLowerCase()}`} onClick={() => onChange(shiftMonth(value, 1))}>
         <ChevronRight />

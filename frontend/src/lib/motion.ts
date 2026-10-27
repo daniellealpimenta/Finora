@@ -20,7 +20,9 @@ export const motion = {
   monthOut: { x: 24, duration: 0.16, ease: "power2.in" },
   monthIn: { x: 24, duration: 0.36, ease: "power3.out" },
   wiggle: { duration: 0.45, rotation: [0, -12, 9, -4, 0], scale: 1.1 },
-  dial: { rotation: -120, duration: 0.45, ease: "power3.inOut" },
+  flip: { duration: 0.9, ease: "power3.inOut" },
+  swap: { duration: 0.45, ease: "back.out(2)" },
+  shake: { keyframes: { x: [0, -5, 5, -3, 3, 0] }, duration: 0.45, stagger: 0.08 },
   spin: { duration: 1.2 },
   toastIn: { y: 24, duration: 0.4, ease: "back.out(1.6)" },
   toastOut: { y: 12, duration: 0.2, ease: "power2.in" },
@@ -65,7 +67,9 @@ export function usePageEnter(scope: RefObject<HTMLElement | null>, ready: boolea
             stagger: motion.enter.stagger,
             clearProps: "transform,opacity,visibility",
           })
-          .from(q("[data-fill]"), { scaleX: 0, ...motion.fill, stagger: 0.03 }, 0.2);
+          .from(q("[data-fill]"), { scaleX: 0, ...motion.fill, stagger: 0.03 }, 0.2)
+          // O que passou do limite treme uma vez, depois que as barras enchem
+          .to(q("[data-over]"), motion.shake, 0.9);
       });
       return () => mm.revert();
     },

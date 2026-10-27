@@ -17,6 +17,11 @@ export const money = (v: string | number | null | undefined) => {
   const n = finite(v);
   return n === null ? "—" : brl.format(n);
 };
+/** Saída de dinheiro com sinal: "−R$ 12,30"; zero fica sem sinal ("R$ 0,00", não "−R$ 0,00"). */
+export const outflow = (v: string | number | null | undefined) => {
+  const n = finite(v);
+  return n === null || Math.abs(n) < 0.005 ? money(n) : `−${brl.format(n)}`;
+};
 export const moneyCompact = (v: string | number | null | undefined) => {
   const n = finite(v);
   return n === null ? "—" : brlCompact.format(n);
