@@ -109,12 +109,11 @@ def main() -> None:
     server = thread = None
     if not _is_running():
         try:
-            from app.core.config import get_settings
+            from app.core import envfile
 
-            if not get_settings().field_encryption_key:
-                raise RuntimeError(
-                    f"Configuração não encontrada. Copie o .env do projeto para {DATA_DIR / '.env'}"
-                )
+            # Primeira abertura: cria o .env com as chaves geradas; o resto (usuário e
+            # Pluggy) a pessoa preenche no onboarding, que abre sozinho sem usuário no banco
+            envfile.ensure()
             _migrate()
             server, thread = _start_server()
         except Exception as exc:

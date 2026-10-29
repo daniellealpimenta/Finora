@@ -1,0 +1,94 @@
+# Gera o Finora para macOS e Windows e publica os instaladores numa Release do GitHub.
+# Os botões "Baixar" do README apontam para a Release mais recente.
+#
+# Para lançar uma versão: suba a versão em backend/pyproject.toml, faça o commit e
+#   git tag v0.1.0 && git push origin v0.1.0
+# (ou rode o workflow à mão em Actions → Release, informando a tag).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag da versão (ex.: v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macos-latest é Apple Silicon (M1 em diante), o mesmo do .dmg feito no Mac
+          - os: macos-latest
+            asset: Finora-macOS.dmg
+          - os: windows-latest
+            asset: Finora-Windows-Setup.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Dependências do frontend
+        run: npm ci
+        working-directory: frontend
+
+      - name: Gerar o .dmg (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          scripts/build-desktop.sh --no-install
+          cp backend/dist/Finora-*.dmg "backend/dist/${{ matrix.asset }}"
+
+      - name: Gerar o instalador (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          .\scripts\build-desktop.ps1 -NoInstall
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: backend/dist/${{ matrix.asset }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Finora ${{ env.TAG }}
+          # Nomes fixos: os links .../releases/latest/download/<arquivo> do README não mudam
+          files: |
+            dist/Finora-macOS.dmg
+            dist/Finora-Windows-Setup.exe
+          body: |
+            ## Baixe e abra
+
+            - 🍎 **Mac** (chip Apple, M1 em diante): `Finora-macOS.dmg`. Abra e arraste o Finora para Aplicativos.
+            - 🪟 **Windows** (64 bits): `Finora-Windows-Setup.exe`. Execute e siga o instalador.
+
+            Na primeira abertura o Finora se configura sozinho e pede só o seu acesso e as chaves da Pluggy.
+            O sistema pode avisar que não conhece o app; o README explica como liberar (só na primeira vez).

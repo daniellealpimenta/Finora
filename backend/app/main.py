@@ -23,6 +23,7 @@ from app.api.routes import (
     pluggy,
     profile,
     savings,
+    setup,
     transactions,
     wishlist,
 )
@@ -95,6 +96,7 @@ def create_app() -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    app.include_router(setup.router)
     app.include_router(auth.router)
     app.include_router(pluggy.router)
     app.include_router(connections.router)

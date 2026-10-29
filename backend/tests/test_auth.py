@@ -88,3 +88,24 @@ def test_login_with_username(client, db):
         client.post("/auth/login", json={"login": "outro", "password": PASSWORD}).status_code == 401
     )
     assert client.post("/auth/login", json={"password": PASSWORD}).status_code == 422
+
+
+def test_last_login_remembers_who_entered(client, db):
+    from app.core.security import hash_password
+    from app.db.models import User
+
+    assert client.get("/auth/last-login").json() == {"login": None}
+    db.add(User(email="dono@exemplo.com", username="dono", password_hash=hash_password("x" * 12)))
+    db.commit()
+    client.post("/auth/login", json={"login": "Dono@Exemplo.com", "password": "errada"})
+    assert client.get("/auth/last-login").json() == {"login": None}  # só login certo conta
+
+    client.post("/auth/login", json={"login": " Dono@Exemplo.com ", "password": "x" * 12})
+    assert client.get("/auth/last-login").json() == {"login": "dono@exemplo.com"}
+    client.post("/auth/login", json={"login": "dono", "password": "x" * 12})
+    assert client.get("/auth/last-login").json() == {"login": "dono"}
+
+    # Trocou o usuário no Perfil: não sugere mais o antigo
+    db.query(User).update({User.username: "outro"})
+    db.commit()
+    assert client.get("/auth/last-login").json() == {"login": None}

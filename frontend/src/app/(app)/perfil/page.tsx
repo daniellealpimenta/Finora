@@ -29,7 +29,7 @@ const bytes = (n: number) =>
     ? `${(n / 1e6).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} MB`
     : `${Math.ceil(n / 1e3).toLocaleString("pt-BR")} KB`;
 
-type Open = "email" | "username" | "password" | "totp-on" | "totp-off" | null;
+type Open = "email" | "username" | "password" | "totp-on" | "totp-off" | "pluggy" | null;
 
 export default function PerfilPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -197,9 +197,15 @@ export default function PerfilPage() {
                 </li>
               ))}
             </ul>
+            <Button className="mt-4 min-h-9" onClick={() => setOpen("pluggy")}>
+              <KeyRound />
+              {profile.keys.some((k) => k.env.startsWith("PLUGGY") && !k.configured)
+                ? "Configurar a Pluggy"
+                : "Trocar chaves da Pluggy"}
+            </Button>
             <p className="mt-4 rounded-control bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-muted">
-              Para trocar uma chave, edite o .env e reinicie o backend. Por segurança, o app não
-              mostra nem altera as chaves por aqui.
+              As chaves da Pluggy dá para trocar aqui, com a sua senha. As de sessão e
+              criptografia o app gerou sozinho; para trocá-las, edite o .env e reinicie.
               {profile.storage.env_files.map((f) => (
                 <code key={f} className="mt-1 block font-mono break-all text-foreground">
                   {f}
@@ -247,6 +253,12 @@ export default function PerfilPage() {
           current={profile.username}
           onClose={() => setOpen(null)}
           onDone={() => saved("Nome de usuário salvo. Já dá para entrar com ele.")}
+        />
+      )}
+      {open === "pluggy" && (
+        <PluggyDialog
+          onClose={() => setOpen(null)}
+          onDone={() => saved("Chaves da Pluggy salvas.")}
         />
       )}
       {open === "password" && (
@@ -451,6 +463,53 @@ function UsernameDialog({
             ? "Deixe vazio para entrar só pelo e-mail."
             : "De 3 a 24 caracteres: letras sem acento, números, ponto, hífen ou sublinhado."
         }
+      />
+      <Field
+        label="Senha atual"
+        type="password"
+        autoComplete="current-password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+      />
+    </FormDialog>
+  );
+}
+
+function PluggyDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [password, setPassword] = useState("");
+  return (
+    <FormDialog
+      title="Chaves da Pluggy"
+      submit="Conferir e salvar"
+      onClose={onClose}
+      onDone={onDone}
+      onSubmit={() =>
+        api("/profile/pluggy", {
+          method: "PUT",
+          body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, password }),
+        })
+      }
+    >
+      <p className="text-sm text-muted">
+        Em dashboard.pluggy.ai → Applications. O app confere com a Pluggy antes de salvar.
+      </p>
+      <Field
+        label="Client ID"
+        autoComplete="off"
+        spellCheck={false}
+        className="font-mono"
+        value={clientId}
+        onChange={(e) => setClientId(e.target.value)}
+      />
+      <Field
+        label="Client Secret"
+        type="password"
+        autoComplete="off"
+        className="font-mono"
+        value={clientSecret}
+        onChange={(e) => setClientSecret(e.target.value)}
       />
       <Field
         label="Senha atual"

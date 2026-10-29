@@ -19,6 +19,14 @@ categoriza os gastos e mostra, ciclo a ciclo, quanto dá para gastar sem apertar
 ![Ollama](https://img.shields.io/badge/Ollama-LLM%20local-000000?logo=ollama&logoColor=white)
 ![Pluggy](https://img.shields.io/badge/Open%20Finance-Pluggy-6E3CF5)
 
+<p>
+  <a href="https://github.com/daniellealpimenta/Finora/releases/latest/download/Finora-macOS.dmg"><img src="https://img.shields.io/badge/Baixar_para_Mac-.dmg-111111?style=for-the-badge&logo=apple&logoColor=white" alt="Baixar para Mac (.dmg)" /></a>
+  &nbsp;
+  <a href="https://github.com/daniellealpimenta/Finora/releases/latest/download/Finora-Windows-Setup.exe"><img src="https://img.shields.io/badge/Baixar_para_Windows-.exe-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Baixar para Windows (.exe)" /></a>
+</p>
+
+<sub>Baixou, abriu, pronto: sem clonar nada nem abrir terminal. <a href="https://github.com/daniellealpimenta/Finora/releases">Todas as versões</a></sub>
+
 </div>
 
 <picture>
@@ -153,50 +161,153 @@ cd frontend && npm install && npm run dev                 # app: http://localhos
 
 ### 🖥️ Programa para Windows e macOS
 
-O mesmo código também vira um programa com janela própria, sem terminais nem navegador.
-O modo web acima continua funcionando igual; os dois usam o mesmo banco (só não rode os dois
-ao mesmo tempo).
+O Finora também vira um programa de verdade, com janela própria: nada de terminal nem de
+navegador. É o mesmo código do modo web, só empacotado. Os dois usam o mesmo banco, então
+use um de cada vez.
 
-**🪟 Windows (.exe)**
+#### 📥 Instalando (para quem vai usar)
 
-```powershell
-.\scripts\build-desktop.ps1      # gera o .exe e instala, com atalho no Menu Iniciar
-```
+Não precisa saber programar nem clonar o projeto. É só baixar:
 
-- Uma vez: copie o `.env` do projeto para `%LOCALAPPDATA%\ManagerFinance\.env`
-  (o programa não roda dentro da pasta do projeto).
-- Fica instalado em `%LOCALAPPDATA%\Programs\Finora` (fora do OneDrive). Para fixar
-  na barra de tarefas: Menu Iniciar → Finora → botão direito → Fixar na barra de
-  tarefas. Reinstalar (rodar o script de novo, com o app fechado) mantém o atalho.
-- Log em `%LOCALAPPDATA%\ManagerFinance\logs\app.log`.
+<p align="center">
+  <a href="https://github.com/daniellealpimenta/Finora/releases/latest/download/Finora-macOS.dmg"><img src="https://img.shields.io/badge/Baixar_para_Mac-.dmg-111111?style=for-the-badge&logo=apple&logoColor=white" alt="Baixar para Mac (.dmg)" /></a>
+  &nbsp;
+  <a href="https://github.com/daniellealpimenta/Finora/releases/latest/download/Finora-Windows-Setup.exe"><img src="https://img.shields.io/badge/Baixar_para_Windows-.exe-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Baixar para Windows (.exe)" /></a>
+</p>
 
-**🍎 macOS (.app e .dmg)**
+**🍎 No Mac** (com chip Apple, M1 em diante)
+
+1. Abra o `Finora-macOS.dmg`.
+2. Arraste o Finora para a pasta **Aplicativos**.
+3. Na primeira vez, o Mac pode avisar que não conhece o app. Tudo bem: vá em **Ajustes do
+   Sistema → Privacidade e Segurança** e clique em **Abrir mesmo assim**. Só acontece uma vez.
+4. Pronto. Ele fica no Launchpad e no Spotlight; arraste para o Dock se quiser ele sempre à mão.
+
+**🪟 No Windows** (64 bits)
+
+1. Execute o `Finora-Windows-Setup.exe`.
+2. Se o Windows mostrar "O Windows protegeu o computador", clique em **Mais informações →
+   Executar assim mesmo**. Só na primeira vez.
+3. Siga o instalador (não pede senha de administrador). O Finora entra no Menu Iniciar e,
+   se você quiser, ganha um atalho na Área de Trabalho.
+4. Para fixar: Menu Iniciar → Finora → botão direito → **Fixar na barra de tarefas**.
+
+Para desinstalar: **Configurações → Aplicativos → Finora**. Os seus dados ficam guardados, caso
+você instale de novo.
+
+#### 👋 A primeira abertura
+
+Na primeira vez, o Finora se configura sozinho e o Pila guia o resto:
+
+1. **A configuração é criada para você.** O programa cria o arquivo `.env` (no formato do
+   `.env.example`) e já gera os dois códigos de segurança: `JWT_SECRET` e
+   `FIELD_ENCRYPTION_KEY`. Ninguém precisa abrir um terminal.
+2. **Você cria o seu acesso.** E-mail, um nome de usuário (se quiser) e uma senha de pelo
+   menos 12 caracteres.
+3. **Você conecta a Pluggy.** Crie uma conta grátis em
+   [dashboard.pluggy.ai](https://dashboard.pluggy.ai), crie uma aplicação e cole o
+   **Client ID** e o **Client Secret**. O Finora confere com a Pluggy antes de salvar. Sem
+   pressa: dá para pular e fazer depois em **Perfil → Chaves**.
+4. **Tudo pronto.** É só ir em **Contas → Conectar banco**.
+
+Da segunda vez em diante, o Finora abre direto no login, **já com o seu último e-mail ou
+usuário preenchido**: é só digitar a senha. Quer entrar com outra conta? Clique em
+"Entrar com outra conta".
+
+<details>
+<summary>Detalhes para os curiosos</summary>
+
+- A tela de boas-vindas só aparece enquanto não existe nenhum usuário no banco. Depois disso,
+  ninguém cria uma conta nova por ela.
+- O programa nunca troca um código que já existe no `.env` (trocar a chave de criptografia
+  desfaria o 2FA).
+- Pelo app só dá para mudar as chaves da Pluggy, e sempre pedindo a sua senha. Os outros
+  códigos ficam só no arquivo.
+- O último login fica guardado no próprio banco (a janela do programa não guarda nada do
+  navegador). Se você trocar o e-mail ou o usuário no Perfil, ele deixa de sugerir o antigo.
+
+</details>
+
+#### 📂 Onde ficam as coisas
+
+| | 🍎 Mac | 🪟 Windows |
+|---|---|---|
+| Programa | `/Applications/Finora.app` | `%LOCALAPPDATA%\Programs\Finora` |
+| Banco e `.env` | `~/Library/Application Support/ManagerFinance/` | `%LOCALAPPDATA%\ManagerFinance\` |
+| Log | `…/ManagerFinance/logs/app.log` | `…\ManagerFinance\logs\app.log` |
+
+A pasta mantém o nome de antes do Finora (ManagerFinance). 💾 Para fazer backup, copie o
+`managerfinance.db` com o programa fechado. **Nunca mande o seu `.env` para ninguém**: ele
+guarda as suas chaves.
+
+#### 🛠️ Gerando o programa (para quem mexe no código)
+
+**🍎 Mac**
 
 ```bash
 scripts/build-desktop.sh               # gera o .app e o .dmg e instala em /Applications
 scripts/build-desktop.sh --no-install  # só gera
 ```
 
-- Na primeira vez o script copia o `.env` do projeto para
-  `~/Library/Application Support/ManagerFinance/.env` (só se ainda não existir).
-- Abra pelo Launchpad ou Spotlight; para fixar, arraste para o Dock. Log em
-  `~/Library/Application Support/ManagerFinance/logs/app.log`.
-- O `.dmg` (`backend/dist/Finora-<versão>.dmg`) é o instalador para outros Macs com
-  Apple Silicon (M1 em diante): abrir e arrastar para Aplicativos.
-- **Assinatura, fora da App Store.** Sem certificado, o app é assinado ad-hoc: roda no Mac que
-  gerou, mas num Mac que baixou o `.dmg` o sistema pede "Abrir mesmo assim" em Ajustes →
-  Privacidade e Segurança. Para abrir sem aviso (como Steam ou Discord, baixados de site), crie
-  um certificado **Developer ID Application** (Xcode → Ajustes → Contas → Gerenciar
-  Certificados → +) e salve uma vez as credenciais de notarização:
-  `xcrun notarytool store-credentials finora --apple-id voce@exemplo.com --team-id SEU_TEAM_ID`.
-  Daí em diante: `MF_NOTARY_PROFILE=finora scripts/build-desktop.sh`. O script acha o
-  certificado sozinho, assina, notariza e grampeia o `.dmg`.
+O instalador para mandar a outras pessoas fica em `backend/dist/Finora-<versão>.dmg`. No Mac
+onde o script roda, ele aproveita o `.env` do projeto (copia para a pasta de dados, se ainda
+não houver um).
+
+**🪟 Windows**
+
+```powershell
+.\scripts\build-desktop.ps1      # gera o .exe e o .zip e instala, com atalho no Menu Iniciar
+```
+
+Com o [Inno Setup](https://jrsoftware.org/isinfo.php) instalado
+(`winget install JRSoftware.InnoSetup`), sai o instalador `backend\dist\Finora-Windows-Setup.exe`;
+sem ele, um `.zip` para extrair e abrir o `Finora.exe`. Reinstalar (rodar o script de novo, com o
+app fechado) mantém o atalho.
+
+#### 🚀 Publicando uma versão (os botões de download)
+
+Os botões lá em cima baixam sempre a versão mais nova da página de
+[Releases](https://github.com/daniellealpimenta/Finora/releases). Quem gera os instaladores é o
+GitHub, sozinho, numa máquina Mac e numa Windows (o `.exe` só pode ser feito no Windows):
+
+1. Suba a versão em `backend/pyproject.toml` (ex.: `0.2.0`) e faça o commit.
+2. Crie e envie a tag:
+
+   ```bash
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+3. Em uns 15 minutos a Release aparece com o `Finora-macOS.dmg` e o
+   `Finora-Windows-Setup.exe`. Dá para acompanhar em **Actions → Release**.
+
+O passo a passo fica em [`.github/workflows/release.yml`](.github/workflows/release.yml).
 
 **Nos dois**
 
-- O programa aplica as migrações sozinho, guardando antes `managerfinance.db.bak`.
+- Mudou o código? Feche o Finora e rode o script de novo.
+- O programa atualiza o banco sozinho ao abrir e guarda antes uma cópia
+  (`managerfinance.db.bak`).
 - O sync automático roda enquanto a janela estiver aberta.
-- Mudou o código? Rode o script de novo (com o app fechado).
+
+<details>
+<summary>🔏 Abrir sem nenhum aviso (assinatura da Apple)</summary>
+
+Sem certificado, o app é assinado só localmente: abre direto no Mac que gerou, e nos outros
+pede o "Abrir mesmo assim" uma vez. Para abrir sem aviso em qualquer Mac, como a Steam ou o
+Discord baixados de um site, você precisa de uma conta Apple Developer:
+
+1. Crie um certificado **Developer ID Application** (Xcode → Ajustes → Contas → Gerenciar
+   Certificados → +).
+2. Salve uma vez as credenciais de notarização:
+   `xcrun notarytool store-credentials finora --apple-id voce@exemplo.com --team-id SEU_TEAM_ID`
+3. Daí em diante: `MF_NOTARY_PROFILE=finora scripts/build-desktop.sh`. O script acha o
+   certificado sozinho, assina, notariza e grampeia o `.dmg`.
+
+No Windows, o equivalente é um certificado de assinatura de código; sem ele, o aviso do
+SmartScreen aparece na primeira vez.
+
+</details>
 
 ## 🧭 Como usar
 
@@ -231,6 +342,7 @@ cd frontend && npm run lint && npm run build
 - 🔑 Login com senha; 2FA (TOTP) opcional com `create_user --totp`; token JWT de curta duração
 - 🔐 IDs de conexão da Pluggy criptografados no banco (`FIELD_ENCRYPTION_KEY`)
 - 🙈 O segredo da Pluggy nunca sai do backend; clientes recebem só um *connect token* temporário
+- 👋 A tela de boas-vindas (criar a primeira conta) só funciona com o banco sem nenhum usuário
 - 🧠 O assistente só aceita um LLM em endereço local (loopback), mesmo com um `.env` errado
 - 💽 Recomendado: BitLocker ativo e manter o projeto **fora do OneDrive**, para o `.env`
   não ser sincronizado com a nuvem

@@ -2,13 +2,13 @@
 
 import { Eye, EyeOff, LockKeyhole, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { CoinMark, ThemeToggle } from "@/components/chrome";
 import { Guilloche } from "@/components/guilloche";
 import { Pila, type PilaMood } from "@/components/pila";
 import { Button, ErrorNote, cx, inputClass, tone } from "@/components/ui";
-import { ApiError, login } from "@/lib/api";
+import { ApiError, api, login, type SetupStatus } from "@/lib/api";
 import { usePageEnter } from "@/lib/motion";
 
 export default function LoginPage() {
@@ -20,9 +20,28 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   // Digitando a senha (oculta), o Pila fecha os olhos
   const [typingSecret, setTypingSecret] = useState(false);
+  // O último e-mail ou usuário que entrou neste computador já vem no campo
+  const [user, setUser] = useState("");
+  const [remembered, setRemembered] = useState(false);
   const root = useRef<HTMLElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   usePageEnter(root, true);
+
+  // Primeira abertura (nenhum usuário no banco): vai para o onboarding
+  useEffect(() => {
+    api<SetupStatus>("/setup")
+      .then((s) => s.needs_user && router.replace("/bem-vindo"))
+      .catch(() => {});
+    api<{ login: string | null }>("/auth/last-login")
+      .then(({ login }) => {
+        if (!login) return;
+        setUser((typed) => typed || login);
+        setRemembered(true);
+        passwordRef.current?.focus();
+      })
+      .catch(() => {});
+  }, [router]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -134,8 +153,26 @@ export default function LoginPage() {
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
+              value={user}
+              onChange={(e) => {
+                setUser(e.target.value);
+                setRemembered(false);
+              }}
               className={input}
             />
+            {remembered && (
+              <button
+                type="button"
+                onClick={() => {
+                  setUser("");
+                  setRemembered(false);
+                  document.getElementById("login")?.focus();
+                }}
+                className="justify-self-start text-xs font-semibold text-muted underline underline-offset-2 hover:text-foreground"
+              >
+                Entrar com outra conta
+              </button>
+            )}
           </div>
           <div className="grid gap-1.5">
             <label htmlFor="password" className="label">
@@ -148,6 +185,7 @@ export default function LoginPage() {
                 type={showPassword ? "text" : "password"}
                 required
                 autoComplete="current-password"
+                ref={passwordRef}
                 onFocus={() => setTypingSecret(true)}
                 onBlur={() => setTypingSecret(false)}
                 className={cx(input, "pr-11")}

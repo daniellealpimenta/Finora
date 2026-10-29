@@ -1,12 +1,14 @@
 """Perfil: e-mail, senha, 2FA e o estado das chaves do .env.
 
 As chaves nunca saem daqui inteiras: só "configurada ou não" e os 4 últimos caracteres, para
-reconhecer qual está em uso. Trocar e-mail, senha ou 2FA sempre pede a senha atual.
+reconhecer qual está em uso. Trocar e-mail, senha, 2FA ou as chaves da Pluggy sempre pede a
+senha atual.
 """
 
 from datetime import datetime
 from pathlib import Path
 
+import httpx
 import pyotp
 import segno
 from cryptography.fernet import Fernet
@@ -15,7 +17,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select
 
 from app.api.deps import CurrentUser, DbSession
-from app.core import usernames
+from app.core import envfile, usernames
 from app.core.config import _DATA_DIR, Settings, get_settings
 from app.core.security import (
     decrypt_field,
@@ -25,6 +27,7 @@ from app.core.security import (
     verify_totp,
 )
 from app.db.models import Connection, User
+from app.integrations.pluggy.client import PluggyClient, PluggyError
 from app.services import mascot
 
 router = APIRouter(prefix="/profile", tags=["profile"])
@@ -76,6 +79,12 @@ class UsernameIn(BaseModel):
 class PasswordIn(BaseModel):
     current: str
     new: str
+
+
+class PluggyIn(BaseModel):
+    client_id: str
+    client_secret: str
+    password: str
 
 
 class TotpSetupOut(BaseModel):
@@ -245,6 +254,28 @@ def change_password(body: PasswordIn, user: CurrentUser, db: DbSession) -> None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A nova senha é igual à atual")
     user.password_hash = hash_password(body.new)
     db.commit()
+
+
+@router.put("/pluggy", status_code=status.HTTP_204_NO_CONTENT)
+def change_pluggy(body: PluggyIn, user: CurrentUser) -> None:
+    """As únicas chaves do .env que o app altera: as outras (sessões, criptografia) são
+    geradas sozinhas e trocá-las derrubaria o 2FA. Só grava depois de a Pluggy aceitar."""
+    _check_password(user, body.password)
+    client_id, client_secret = body.client_id.strip(), body.client_secret.strip()
+    if not client_id or not client_secret:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Preencha o Client ID e o Client Secret")
+    try:
+        with PluggyClient(client_id=client_id, client_secret=client_secret) as pluggy:
+            pluggy._ensure_api_key()
+    except PluggyError:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "A Pluggy recusou essas chaves: confira e cole de novo"
+        ) from None
+    except httpx.HTTPError:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, "Não deu para falar com a Pluggy: confira a internet"
+        ) from None
+    envfile.update({"PLUGGY_CLIENT_ID": client_id, "PLUGGY_CLIENT_SECRET": client_secret})
 
 
 @router.put("/mascot", status_code=status.HTTP_204_NO_CONTENT)

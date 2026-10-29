@@ -64,7 +64,18 @@ export async function login(user: string, password: string, totpCode?: string) {
   setToken(access_token);
 }
 
+/** Onboarding: cria o primeiro usuário (só funciona com o banco sem nenhum) e já entra. */
+export async function createFirstUser(email: string, username: string, password: string) {
+  const { access_token } = await api<{ access_token: string }>("/setup", {
+    method: "POST",
+    body: JSON.stringify({ email, username: username || null, password }),
+  });
+  setToken(access_token);
+}
+
 // --- tipos da API ----------------------------------------------------------
+
+export type SetupStatus = { needs_user: boolean; pluggy_configured: boolean };
 
 export type Me = { id: number; email: string; username: string | null; mascot: string };
 
