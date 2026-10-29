@@ -21,6 +21,7 @@ import { AssistantFab } from "@/components/assistant/fab";
 import { CoinMark, SoundToggle, ThemeToggle, Toaster } from "@/components/chrome";
 import { MascotProvider } from "@/components/pila";
 import { IconButton, cx, tone } from "@/components/ui";
+import { UpdateBanner } from "@/components/update-banner";
 import { api, setToken, type Me } from "@/lib/api";
 
 // Cada seção tem a sua cor de detalhe no ícone (MASTER.md, "Seções do menu"). `mobile: false`
@@ -147,6 +148,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </header>
+        <UpdateBanner />
 
         <main className="mx-auto max-w-6xl px-4 pt-6 pb-44 sm:px-6 sm:pt-8 sm:pb-28">
           {children}

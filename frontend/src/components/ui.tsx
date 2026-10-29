@@ -69,20 +69,20 @@ const BUTTON_STYLES = {
     "bg-negative text-surface hover:bg-[color-mix(in_oklab,var(--negative)_88%,var(--foreground))] active:bg-[color-mix(in_oklab,var(--negative)_78%,var(--foreground))]",
 };
 
-export function Button({ variant = "secondary", className, ...props }: ButtonProps) {
-  return (
-    <button
-      {...props}
-      className={cx(
-        "inline-flex min-h-10 items-center justify-center gap-2 rounded-control px-4 text-sm font-semibold whitespace-nowrap",
-        "transition-colors duration-[var(--dur-fast)] ease-[var(--ease-out)]",
-        "disabled:cursor-not-allowed disabled:opacity-45",
-        "[&_svg]:size-4 [&_svg]:shrink-0",
-        BUTTON_STYLES[variant],
-        className,
-      )}
-    />
+/** As classes do Button, para um link com cara de botão (ex.: baixar um arquivo). */
+export function buttonClass(variant: ButtonProps["variant"] = "secondary", className?: string) {
+  return cx(
+    "inline-flex min-h-10 items-center justify-center gap-2 rounded-control px-4 text-sm font-semibold whitespace-nowrap",
+    "transition-colors duration-[var(--dur-fast)] ease-[var(--ease-out)]",
+    "disabled:cursor-not-allowed disabled:opacity-45",
+    "[&_svg]:size-4 [&_svg]:shrink-0",
+    BUTTON_STYLES[variant],
+    className,
   );
+}
+
+export function Button({ variant = "secondary", className, ...props }: ButtonProps) {
+  return <button {...props} className={buttonClass(variant, className)} />;
 }
 
 export function IconButton({

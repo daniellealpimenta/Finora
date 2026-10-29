@@ -25,6 +25,7 @@ from app.api.routes import (
     savings,
     setup,
     transactions,
+    updates,
     wishlist,
 )
 from app.core.config import get_settings
@@ -109,6 +110,7 @@ def create_app() -> FastAPI:
     app.include_router(assistant.router)
     app.include_router(profile.router)
     app.include_router(notifications.router)
+    app.include_router(updates.router)
 
     # Por último: as rotas da API têm prioridade sobre os arquivos do frontend
     frontend = _frontend_dir()

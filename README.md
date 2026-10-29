@@ -228,6 +228,35 @@ usuário preenchido**: é só digitar a senha. Quer entrar com outra conta? Cliq
 
 </details>
 
+#### 🔄 Atualizações
+
+Quando sai uma versão nova, o próprio Finora avisa: aparece uma faixa no topo, com o Pila,
+dizendo "Saiu a versão X do Finora!".
+
+1. Clique em **Baixar**. O navegador baixa o instalador certo para o seu sistema.
+2. Instale por cima:
+   - 🍎 **Mac:** feche o Finora, abra o `.dmg` e arraste o Finora para Aplicativos,
+     escolhendo **Substituir**.
+   - 🪟 **Windows:** abra o instalador. Ele mesmo fecha o Finora e instala por cima.
+3. Abra o Finora de novo. Pronto!
+
+Seus dados, o acesso e as chaves da Pluggy continuam do jeito que estavam: eles ficam numa
+pasta separada do programa. Se a versão nova mudar algo no banco, o Finora ajusta sozinho e
+guarda antes uma cópia (`managerfinance.db.bak`).
+
+<details>
+<summary>Detalhes para os curiosos</summary>
+
+- O Finora pergunta ao GitHub qual é a última versão, no máximo a cada 6 horas. É só essa
+  pergunta: nenhum dado seu sai do computador.
+- **Agora não** esconde o aviso daquela versão; ele volta quando sair uma mais nova.
+- Sem internet, nada acontece: o aviso só aparece quando o GitHub responde.
+- Não dá para voltar para uma versão mais antiga depois que a nova ajustou o banco (a não ser
+  restaurando o `.bak`).
+- No modo web (rodando pelo código) o aviso não aparece: lá a atualização é o `git pull`.
+
+</details>
+
 #### 📂 Onde ficam as coisas
 
 | | 🍎 Mac | 🪟 Windows |
@@ -280,6 +309,8 @@ GitHub, sozinho, numa máquina Mac e numa Windows (o `.exe` só pode ser feito n
 
 3. Em uns 15 minutos a Release aparece com o `Finora-macOS.dmg` e o
    `Finora-Windows-Setup.exe`. Dá para acompanhar em **Actions → Release**.
+
+Assim que a Release sai, quem já tem o Finora instalado vê o aviso de versão nova ao abrir.
 
 O passo a passo fica em [`.github/workflows/release.yml`](.github/workflows/release.yml).
 

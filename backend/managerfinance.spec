@@ -20,6 +20,8 @@ a = Analysis(
     pathex=[str(root)],
     datas=[
         (str(root / "alembic.ini"), "."),
+        # A versão instalada, para o aviso de versão nova (app/services/updates.py)
+        (str(root / "pyproject.toml"), "."),
         (str(root / "migrations"), "migrations"),
         (str(frontend), "frontend"),
         # Mascotes em PNG dos avisos por e-mail (app/services/notify/render.py)

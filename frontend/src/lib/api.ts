@@ -77,6 +77,14 @@ export async function createFirstUser(email: string, username: string, password:
 
 export type SetupStatus = { needs_user: boolean; pluggy_configured: boolean };
 
+export type UpdateInfo = {
+  current: string;
+  latest: string | null;
+  available: boolean;
+  download_url: string | null;
+  notes_url: string | null;
+};
+
 export type Me = { id: number; email: string; username: string | null; mascot: string };
 
 export type ProfileKey = {

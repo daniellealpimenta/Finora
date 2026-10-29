@@ -1,6 +1,6 @@
 [project]
 name = "managerfinance-backend"
-version = "0.1.0"
+version = "0.1.1"
 description = "API do Finora: ingestão de transações via Pluggy, categorização e analytics"
 requires-python = ">=3.12"
 dependencies = [
