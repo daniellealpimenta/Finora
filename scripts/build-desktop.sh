@@ -45,7 +45,15 @@ app="$root/backend/dist/Finora.app"
 version="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")"
 dmg="$root/backend/dist/Finora-$version.dmg"
 
-# 3. Assinatura
+# 3. Assinatura. Numa cópia fora do projeto e sem atributos estendidos: com a pasta no
+#    iCloud (Mesa/Documentos), o File Provider grava FinderInfo/provenance nos arquivos e o
+#    codesign recusa ("resource fork, Finder information, or similar detritus not allowed").
+#    Daqui em diante $app é essa cópia assinada (vai para o .dmg e para /Applications).
+staging="$(mktemp -d)"
+trap 'rm -rf "$staging"' EXIT
+ditto --norsrc --noextattr --noqtn "$app" "$staging/Finora.app"
+app="$staging/Finora.app"
+xattr -cr "$app"
 identity="${MF_SIGN_IDENTITY:-}"
 if [[ -z "$identity" ]]; then
   identity="$(security find-identity -v -p codesigning \
@@ -64,9 +72,6 @@ codesign --verify --deep --strict "$app"
 
 # 4. .dmg com o atalho para Aplicativos (arrastar e soltar)
 echo "==> $(basename "$dmg")"
-staging="$(mktemp -d)"
-trap 'rm -rf "$staging"' EXIT
-ditto "$app" "$staging/Finora.app"
 ln -s /Applications "$staging/Aplicativos"
 rm -f "$dmg"
 hdiutil create -volname "Finora" -srcfolder "$staging" -ov -format UDZO "$dmg" >/dev/null
