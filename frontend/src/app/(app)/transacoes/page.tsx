@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownRight, ArrowUpRight, CalendarRange, List, Search } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, CalendarRange, Gamepad2, List, Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CategoryIcon, categoryStyle } from "@/components/category-icon";
@@ -26,6 +26,7 @@ import {
   type TransactionPage,
 } from "@/lib/api";
 import { CyclePicker } from "@/components/cycle-picker";
+import { NeedsGame } from "@/components/needs/game";
 import { cycleName, useCycle } from "@/lib/cycle";
 import { money, percent } from "@/lib/format";
 import { usePageEnter } from "@/lib/motion";
@@ -58,6 +59,8 @@ export default function TransacoesPage() {
   const { key: cycleKey, setKey: setCycleKey, info: cycle } = useCycle();
   const [allCycles, setAllCycles] = useState(false);
   const month = allCycles ? "" : (cycleKey ?? "");
+  const [playing, setPlaying] = useState(false);
+  const closeGame = useCallback(() => setPlaying(false), []);
   const [accountId, setAccountId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [q, setQ] = useState("");
@@ -142,6 +145,10 @@ export default function TransacoesPage() {
           month ? (
             <>
               <CyclePicker value={month} info={cycle} onChange={(m) => filter(() => setCycleKey(m))} />
+              <Button variant="ghost" onClick={() => setPlaying(true)}>
+                <Gamepad2 />
+                Precisava ou vontade?
+              </Button>
               <Button variant="ghost" onClick={() => filter(() => setAllCycles(true))}>
                 <CalendarRange />
                 Todos os ciclos
@@ -156,6 +163,7 @@ export default function TransacoesPage() {
         }
       />
 
+      {playing && month && <NeedsGame month={month} onClose={closeGame} />}
       <div className="grid gap-4">
         <Card data-enter className="flex flex-wrap gap-2 p-3 sm:p-3">
           <label className="relative min-w-56 flex-1">

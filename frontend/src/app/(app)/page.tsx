@@ -21,6 +21,7 @@ import {
   RING_LENGTH,
 } from "@/components/dashboard/cards";
 import { BillsCard, CardsCard } from "@/components/dashboard/credit";
+import { CategoryTilesCard, CycleRulerCard, RiverCard } from "@/components/dashboard/extras";
 import { ForecastCard } from "@/components/dashboard/forecast";
 import { PanelCatalog, PanelGrid, usePanelLayout } from "@/components/dashboard/panel";
 import type {
@@ -33,6 +34,7 @@ import type {
   Summary,
 } from "@/components/dashboard/types";
 import { CyclePicker } from "@/components/cycle-picker";
+import { NeedsCard } from "@/components/needs/card";
 import { Pila, useMascot } from "@/components/pila";
 import { CycleRecap, useRecap } from "@/components/recap";
 import { Button, Card, ErrorNote, PageHeader } from "@/components/ui";
@@ -260,6 +262,10 @@ export default function Dashboard() {
               commitments: data.commitments.some((c) => c.amount > 0) ? <CommitmentsCard data={data} /> : null,
               merchants: <MerchantsCard data={data} />,
               recurring: <RecurringCard data={data} />,
+              needs: <NeedsCard month={data.month} />,
+              river: <RiverCard data={data} keyById={keyById} />,
+              ruler: forecast && s.cycle.is_current ? <CycleRulerCard forecast={forecast} /> : null,
+              tiles: <CategoryTilesCard rows={data.categories} keyById={keyById} month={data.month} />,
             }}
           />
         )}

@@ -9,6 +9,7 @@ import { Guilloche } from "@/components/guilloche";
 import { Pila, type PilaMood } from "@/components/pila";
 import { Field } from "@/components/profile/form";
 import { Button, ErrorNote } from "@/components/ui";
+import { VaultOpening } from "@/components/vault";
 import { api, createFirstUser, type SetupStatus } from "@/lib/api";
 import { usePageEnter } from "@/lib/motion";
 
@@ -34,6 +35,7 @@ export default function BemVindoPage() {
   const [pluggyReady, setPluggyReady] = useState(false);
   // A rota da Pluggy no Perfil pede a senha: guardada só enquanto o onboarding está aberto
   const [password, setPassword] = useState("");
+  const [opening, setOpening] = useState(false);
   const root = useRef<HTMLElement>(null);
 
   usePageEnter(root, true);
@@ -102,6 +104,7 @@ export default function BemVindoPage() {
 
   return (
     <main ref={root} className="grid min-h-screen md:grid-cols-2">
+      {opening && <VaultOpening onOpen={() => router.replace("/")} />}
       {/* Painel da marca: o mesmo do login, sempre grafite */}
       <section className="theme-dark relative isolate flex flex-col justify-between gap-8 overflow-hidden bg-background p-6 text-foreground sm:p-10 lg:p-14">
         <Guilloche className="-z-10" />
@@ -281,7 +284,7 @@ export default function BemVindoPage() {
               className="min-h-11 w-full"
               onClick={() => {
                 setPassword("");
-                router.replace("/");
+                setOpening(true);
               }}
             >
               Abrir o Finora

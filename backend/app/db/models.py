@@ -268,6 +268,9 @@ class Transaction(TimestampMixin, Base):
     installment_number: Mapped[int | None] = mapped_column(Integer)
     installment_total: Mapped[int | None] = mapped_column(Integer)
     raw: Mapped[dict | None] = mapped_column(JSON)
+    # Jogo "Precisava ou foi vontade?": True precisava, False foi vontade, None ainda não
+    # classificado (services/needs.py)
+    need: Mapped[bool | None] = mapped_column(Boolean)
 
     account: Mapped[Account] = relationship(back_populates="transactions")
     category: Mapped[Category | None] = relationship()
@@ -336,6 +339,8 @@ class WishItem(TimestampMixin, Base):
     # Avisa quando o preço chega nele ou abaixo
     target_price: Mapped[Decimal | None] = mapped_column(Money)
     bought_at: Mapped[date | None] = mapped_column(Date)
+    # O pote do desejo: quanto já foi separado para ele (moedas jogadas no pote)
+    saved: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default="0")
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     group: Mapped[WishGroup | None] = relationship(back_populates="items")

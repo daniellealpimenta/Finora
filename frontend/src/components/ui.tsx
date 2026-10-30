@@ -73,7 +73,8 @@ const BUTTON_STYLES = {
 export function buttonClass(variant: ButtonProps["variant"] = "secondary", className?: string) {
   return cx(
     "inline-flex min-h-10 items-center justify-center gap-2 rounded-control px-4 text-sm font-semibold whitespace-nowrap",
-    "transition-colors duration-[var(--dur-fast)] ease-[var(--ease-out)]",
+    // Clique afunda um pouco (2026-10-30: mais resposta ao toque)
+    "transition-[color,background-color,transform] duration-[var(--dur-fast)] ease-[var(--ease-out)] active:scale-[0.96]",
     "disabled:cursor-not-allowed disabled:opacity-45",
     "[&_svg]:size-4 [&_svg]:shrink-0",
     BUTTON_STYLES[variant],
@@ -97,7 +98,7 @@ export function IconButton({
       title={label}
       className={cx(
         "grid size-11 place-items-center rounded-chip text-muted sm:size-9",
-        "transition-colors duration-[var(--dur-fast)] ease-[var(--ease-out)]",
+        "transition-[color,background-color,transform] duration-[var(--dur-fast)] ease-[var(--ease-out)] active:scale-90",
         "hover:bg-surface-2 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45",
         "[&_svg]:size-4",
         className,

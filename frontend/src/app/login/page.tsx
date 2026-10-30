@@ -8,6 +8,7 @@ import { CoinMark, ThemeToggle } from "@/components/chrome";
 import { Guilloche } from "@/components/guilloche";
 import { Pila, type PilaMood } from "@/components/pila";
 import { Button, ErrorNote, cx, inputClass, tone } from "@/components/ui";
+import { VaultOpening } from "@/components/vault";
 import { ApiError, api, login, type SetupStatus } from "@/lib/api";
 import { usePageEnter } from "@/lib/motion";
 
@@ -23,6 +24,8 @@ export default function LoginPage() {
   // O último e-mail ou usuário que entrou neste computador já vem no campo
   const [user, setUser] = useState("");
   const [remembered, setRemembered] = useState(false);
+  // Entrou: a porta do cofre abre e só então libera o app
+  const [opening, setOpening] = useState(false);
   const root = useRef<HTMLElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
@@ -54,7 +57,7 @@ export default function LoginPage() {
         String(form.get("password")),
         String(form.get("totp") ?? ""),
       );
-      router.replace("/");
+      setOpening(true);
     } catch (err) {
       if (err instanceof ApiError && err.message === "TOTP_REQUIRED") {
         setNeedsTotp(true);
@@ -85,6 +88,7 @@ export default function LoginPage() {
 
   return (
     <main ref={root} className="grid min-h-screen md:grid-cols-2">
+      {opening && <VaultOpening onOpen={() => router.replace("/")} />}
       {/* Painel da marca: sempre grafite, nos dois temas */}
       <section className="theme-dark relative isolate flex flex-col justify-between gap-8 overflow-hidden bg-background p-6 text-foreground sm:p-10 lg:p-14">
         <Guilloche className="-z-10" />
@@ -106,7 +110,7 @@ export default function LoginPage() {
           </div>
           <div className="grid max-w-md gap-2">
             <h1 className="font-display text-[clamp(30px,4.4vw,46px)] leading-[1.05] font-bold tracking-[-0.02em]">
-              Suas finanças, guardadas no seu computador.
+              Seu dinheiro, <span className="text-accent">trancado</span> no seu computador.
             </h1>
             <p className="text-base leading-relaxed text-muted">
               Os dados dos seus bancos chegam pela Pluggy e ficam só aqui.

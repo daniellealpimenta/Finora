@@ -1,17 +1,28 @@
 "use client";
 
 import gsap from "gsap";
+import { CustomEase } from "gsap/CustomEase";
+import { Draggable } from "gsap/Draggable";
+import { DrawSVGPlugin } from "gsap/DrawSVGPlugin";
+import { Flip } from "gsap/Flip";
+import { InertiaPlugin } from "gsap/InertiaPlugin";
+import { MotionPathPlugin } from "gsap/MotionPathPlugin";
+import { SplitText } from "gsap/SplitText";
 import { useGSAP } from "@gsap/react";
 import type { RefObject } from "react";
 
 // Tokens de movimento dos momentos GSAP (tabela "Movimento" em MASTER.md)
-gsap.registerPlugin(useGSAP);
+gsap.registerPlugin(useGSAP, CustomEase, Draggable, DrawSVGPlugin, Flip, InertiaPlugin, MotionPathPlugin, SplitText);
+
+// O segredo do cofre: passa do ponto e volta, como um disco pesado (login)
+CustomEase.create("dial", "M0,0 C0.3,0 0.2,1.12 0.6,1.04 0.8,1 0.9,1 1,1");
 
 export const REDUCED = "(prefers-reduced-motion: reduce)";
 export const FULL = "(prefers-reduced-motion: no-preference)";
 
 export const motion = {
-  enter: { y: 12, duration: 0.5, ease: "power3.out", stagger: 0.06 },
+  // Entradas com mais corpo (2026-10-30): sobem mais e assentam com um leve passo além
+  enter: { y: 22, duration: 0.6, ease: "back.out(1.3)", stagger: 0.07 },
   count: { duration: 0.9, ease: "power2.out" },
   ring: { duration: 1, ease: "power2.out" },
   pop: { duration: 0.4, ease: "back.out(2)" },
@@ -27,8 +38,15 @@ export const motion = {
   toastIn: { y: 24, duration: 0.4, ease: "back.out(1.6)" },
   toastOut: { y: 12, duration: 0.2, ease: "power2.in" },
   theme: { duration: 0.4, ease: "back.out(1.4)" },
-  dialogIn: { scale: 0.96, duration: 0.24, ease: "power3.out" },
-  dialogOut: { scale: 0.96, duration: 0.15, ease: "power2.in" },
+  dialogIn: { scale: 0.9, y: 16, duration: 0.42, ease: "back.out(1.7)" },
+  dialogOut: { scale: 0.94, y: 8, duration: 0.18, ease: "power2.in" },
+  /** Troca de página: o conteúdo novo sobe e assenta */
+  page: { y: 28, duration: 0.55, ease: "power3.out" },
+  /** Elástico curto para peças pequenas (selos, contadores, botões de ícone) */
+  spring: { duration: 0.6, ease: "elastic.out(1, 0.5)" },
+  /** Carta jogada (Precisava ou vontade) e moeda voando para o pote */
+  toss: { duration: 0.55, ease: "power3.in" },
+  coinArc: { duration: 0.75, ease: "power1.inOut" },
 } as const;
 
 export function prefersReducedMotion() {
@@ -79,4 +97,10 @@ export function usePageEnter(scope: RefObject<HTMLElement | null>, ready: boolea
   );
 }
 
-export { gsap, useGSAP };
+/** Pulinho elástico de uma peça pequena (contador que mudou, selo, botão). */
+export function boing(target: Element | null, scale = 1.18) {
+  if (!target || prefersReducedMotion()) return;
+  gsap.fromTo(target, { scale }, { scale: 1, ...motion.spring, overwrite: "auto" });
+}
+
+export { CustomEase, Draggable, Flip, gsap, SplitText, useGSAP };

@@ -41,6 +41,8 @@ class ItemOut(BaseModel):
     # Primeiro preço registrado: para mostrar quanto caiu ou subiu desde que foi adicionado
     first_price: Decimal
     lowest_price: Decimal
+    # O pote do desejo: quanto já foi separado para ele
+    saved: Decimal
     created_at: datetime
 
 
@@ -67,6 +69,11 @@ class ItemUpdate(BaseModel):
     priority: int | None = Field(default=None, ge=1, le=3)
     status: WishStatus | None = None
     target_price: Decimal | None = Field(default=None, ge=0)
+
+
+class JarIn(BaseModel):
+    # Moedas jogadas no pote (negativo tira); o pote nunca fica abaixo de zero
+    amount: Decimal = Field(ge=-1_000_000, le=1_000_000)
 
 
 class GroupOut(BaseModel):
@@ -135,6 +142,7 @@ def _item_out(i: WishItem) -> ItemOut:
         last_checked_at=i.last_checked_at,
         first_price=history[0],
         lowest_price=min(history),
+        saved=i.saved or 0,
         created_at=i.created_at,
     )
 
@@ -290,6 +298,16 @@ def refresh_item(item_id: int, _: CurrentUser, db: DbSession) -> ItemOut:
     except wish_service.ProductFetchError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e)) from None
     db.commit()
+    return _item_out(item)
+
+
+@router.post("/wishlist/items/{item_id}/jar", response_model=ItemOut)
+def put_in_jar(item_id: int, body: JarIn, _: CurrentUser, db: DbSession) -> ItemOut:
+    """O pote do desejo é uma meta, não uma conta: o dinheiro de verdade continua onde está."""
+    item = _get_item(db, item_id)
+    item.saved = max(Decimal("0"), (item.saved or Decimal("0")) + body.amount)
+    db.commit()
+    db.refresh(item)
     return _item_out(item)
 
 

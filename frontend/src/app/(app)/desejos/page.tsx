@@ -21,6 +21,7 @@ import { INFO_WISH_FIT } from "@/components/dashboard/info";
 import { Dialog } from "@/components/dialog";
 import { InfoTip } from "@/components/info-tip";
 import { PilaSays } from "@/components/pila";
+import { WishJar } from "@/components/wish-jar";
 import {
   Button,
   Card,
@@ -82,6 +83,7 @@ export default function DesejosPage() {
     null,
   );
   const [refreshing, setRefreshing] = useState<number | null>(null);
+  const [jar, setJar] = useState<WishItem | null>(null);
   const root = useRef<HTMLDivElement>(null);
 
   usePageEnter(root, data !== null);
@@ -151,6 +153,7 @@ export default function DesejosPage() {
     onEdit: (item: WishItem) => setEditing(item),
     onBought: (item: WishItem) => patchItem(item, { status: "BOUGHT" }, `${item.name} marcado como comprado.`),
     onRemove: (item: WishItem) => setRemoving({ kind: "item", item }),
+    onJar: (item: WishItem) => setJar(item),
   };
 
   return (
@@ -292,6 +295,15 @@ export default function DesejosPage() {
         )}
       </div>
 
+      {jar && (
+        <WishJar
+          item={jar}
+          onClose={() => setJar(null)}
+          onChange={(updated) =>
+            setData((d) => (d ? { ...d, items: d.items.map((i) => (i.id === updated.id ? updated : i)) } : d))
+          }
+        />
+      )}
       {editing && (
         <ItemDialog
           item={editing === "new" ? null : editing}
@@ -438,6 +450,7 @@ function ItemList({
   onEdit: (item: WishItem) => void;
   onBought: (item: WishItem) => void;
   onRemove: (item: WishItem) => void;
+  onJar: (item: WishItem) => void;
 }) {
   if (items.length === 0) return <p className="text-sm text-muted">Nenhum desejo neste grupo ainda.</p>;
   return (
@@ -457,6 +470,7 @@ function ItemRow({
   onEdit,
   onBought,
   onRemove,
+  onJar,
 }: {
   item: WishItem;
   afford: Affordability | null;
@@ -465,8 +479,10 @@ function ItemRow({
   onEdit: (item: WishItem) => void;
   onBought: (item: WishItem) => void;
   onRemove: (item: WishItem) => void;
+  onJar: (item: WishItem) => void;
 }) {
   const price = Number(item.price);
+  const inJar = Number(item.saved ?? 0);
   const first = Number(item.first_price);
   const target = item.target_price === null ? null : Number(item.target_price);
   const verdict = item.status === "WANTED" ? afford?.items[item.id] : undefined;
@@ -504,6 +520,24 @@ function ItemRow({
           {price < first && <Pill status="ok">Caiu {money(first - price)}</Pill>}
           {price > first && <Pill status="warn">Subiu {money(price - first)}</Pill>}
         </div>
+        {inJar > 0 && (
+          <button
+            type="button"
+            onClick={() => onJar(item)}
+            className="mt-2 grid w-full max-w-xs gap-1 text-left"
+            aria-label={`Pote de ${item.name}: ${money(inJar)} de ${money(price)}`}
+          >
+            <span className="h-1.5 overflow-hidden rounded-full bg-surface-2">
+              <span
+                className="block h-full rounded-full bg-[var(--coin)]"
+                style={{ width: `${Math.min(100, (inJar / Math.max(price, 1)) * 100)}%` }}
+              />
+            </span>
+            <span className="text-xs text-muted tabular">
+              {inJar >= price ? "Pote cheio!" : `${money(inJar)} no pote · faltam ${money(price - inJar)}`}
+            </span>
+          </button>
+        )}
         {/* Fora do "cabe": o motivo e o que fazer (parcelar ou juntar) */}
         {verdict && verdict.veredito !== "cabe" && (
           <p className="mt-1.5 max-w-[62ch] text-xs leading-relaxed text-muted">
@@ -526,6 +560,9 @@ function ItemRow({
             <RefreshCw className={cx(refreshing === item.id && "motion-safe:animate-spin")} />
           </IconButton>
         )}
+        <IconButton label="Pote do desejo" onClick={() => onJar(item)}>
+          <PiggyBank />
+        </IconButton>
         <IconButton label="Comprei" onClick={() => onBought(item)}>
           <Check />
         </IconButton>

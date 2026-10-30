@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { AssistantProvider } from "@/components/assistant/context";
 import { AssistantFab } from "@/components/assistant/fab";
@@ -23,6 +23,7 @@ import { MascotProvider } from "@/components/pila";
 import { IconButton, cx, tone } from "@/components/ui";
 import { UpdateBanner } from "@/components/update-banner";
 import { api, setToken, type Me } from "@/lib/api";
+import { FULL, gsap, motion, useGSAP, wiggle } from "@/lib/motion";
 
 // Cada seção tem a sua cor de detalhe no ícone (MASTER.md, "Seções do menu"). `mobile: false`
 // fica fora da barra inferior do celular (6 itens já ocupam a largura) e vira botão no topo.
@@ -74,12 +75,59 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // No .exe (export estático, trailingSlash) o caminho chega como "/transacoes/"
   const pathname = usePathname().replace(/(.)\/$/, "$1");
   const [me, setMe] = useState<Me | null>(null);
+  const shell = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     api<Me>("/auth/me")
       .then(setMe)
       .catch(() => router.replace("/login"));
   }, [router]);
+
+  // Troca de página: o conteúdo novo sobe e assenta; a pílula do menu escorrega até a seção
+  // ativa com um elástico; no celular, o ícone ativo dá um pulinho
+  useGSAP(
+    () => {
+      if (!me) return;
+      const q = gsap.utils.selector(shell);
+      const pill = q("[data-nav-pill]")[0] as HTMLElement | undefined;
+      const active = q('nav[data-desktop] a[aria-current="page"]')[0] as HTMLElement | undefined;
+      const place = (animate: boolean) => {
+        if (!pill) return;
+        if (!active) return gsap.to(pill, { autoAlpha: 0, duration: 0.2 });
+        // A cor vai direto: o GSAP não interpola color-mix()
+        pill.style.backgroundColor = `color-mix(in oklab, ${active.dataset.color} 13%, transparent)`;
+        const to = { x: active.offsetLeft, width: active.offsetWidth, autoAlpha: 1 };
+        if (!animate) return gsap.set(pill, to);
+        gsap
+          .timeline()
+          .to(pill, { ...to, duration: 0.55, ease: "elastic.out(1, 0.75)" })
+          .fromTo(pill, { scaleY: 0.7 }, { scaleY: 1, duration: 0.5, ease: "elastic.out(1.2, 0.5)" }, 0);
+      };
+      const mm = gsap.matchMedia();
+      mm.add(FULL, () => {
+        place(Boolean(pill?.style.width));
+        gsap.fromTo(
+          q("main"),
+          { y: motion.page.y, autoAlpha: 0 },
+          { y: 0, autoAlpha: 1, duration: motion.page.duration, ease: motion.page.ease, clearProps: "transform,opacity,visibility" },
+        );
+        gsap.fromTo(
+          q('nav[data-mobile] a[aria-current="page"] [data-icon]'),
+          { y: -8, scale: 1.25 },
+          { y: 0, scale: 1, ...motion.spring },
+        );
+        gsap.fromTo("[data-brand-coin]", { rotationY: 0 }, { rotationY: 360, duration: 0.8, ease: "power3.inOut" });
+      });
+      mm.add("(prefers-reduced-motion: reduce)", () => place(false));
+      const onResize = () => place(false);
+      window.addEventListener("resize", onResize);
+      return () => {
+        window.removeEventListener("resize", onResize);
+        mm.revert();
+      };
+    },
+    { scope: shell, dependencies: [pathname, Boolean(me)] },
+  );
 
   if (!me) return null;
 
@@ -91,7 +139,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <MascotProvider initial={me.mascot}>
     <AssistantProvider>
-      <div className="min-h-screen">
+      <div ref={shell} className="min-h-screen">
         {/* Barra do topo sempre grafite (theme-dark): âncora do layout e a moeda de latão brilhando nela */}
         <header className="theme-dark sticky top-0 z-30 border-b border-border bg-surface text-foreground">
           <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-2.5 sm:px-6">
@@ -99,10 +147,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               href="/"
               className="mr-4 flex shrink-0 items-center gap-2.5 rounded-control font-display text-[17px] font-bold"
             >
-              <CoinMark />
+              <span data-brand-coin className="inline-grid">
+                <CoinMark />
+              </span>
               Finora
             </Link>
-            <nav className="hidden gap-1 sm:flex" aria-label="Seções">
+            <nav data-desktop className="relative hidden gap-1 sm:flex" aria-label="Seções">
+              <span data-nav-pill aria-hidden className="invisible absolute top-0 left-0 h-full rounded-control" />
               {NAV.map((item) => (
                 <NavLink
                   key={item.href}
@@ -156,6 +207,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Celular: as seções viram uma barra inferior fixa */}
         <nav
+          data-mobile
           aria-label="Seções"
           className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-border bg-surface px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom,0px))] sm:hidden"
         >
@@ -174,6 +226,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 )}
               >
                 <span
+                  data-icon
                   className={cx(
                     "grid h-7 w-11 place-items-center rounded-full text-[var(--c)] transition-colors duration-[var(--dur-base)] ease-[var(--ease-out)]",
                     active && "tint",
@@ -207,14 +260,15 @@ function NavLink({
     <Link
       href={item.href}
       style={tone(item.color)}
+      data-color={item.color}
       aria-current={active ? "page" : undefined}
       title={item.label}
+      onMouseEnter={(e) => wiggle(e.currentTarget.querySelector("svg"))}
       className={cx(
-        "inline-flex min-h-9 items-center gap-2 rounded-control px-2.5 text-sm font-medium whitespace-nowrap xl:px-3",
+        // O fundo da seção ativa é a pílula que escorrega (layout); aqui só o texto
+        "relative inline-flex min-h-9 items-center gap-2 rounded-control px-2.5 text-sm font-medium whitespace-nowrap xl:px-3",
         "transition-colors duration-[var(--dur-base)] ease-[var(--ease-out)]",
-        active
-          ? "bg-[color-mix(in_oklab,var(--c)_13%,transparent)] text-foreground"
-          : "text-muted hover:bg-surface-2 hover:text-foreground",
+        active ? "text-foreground" : "text-muted hover:bg-surface-2 hover:text-foreground",
       )}
     >
       <Icon className="size-4 text-[var(--c)]" strokeWidth={2.2} />

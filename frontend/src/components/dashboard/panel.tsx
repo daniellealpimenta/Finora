@@ -22,7 +22,11 @@ export type CardId =
   | "pace"
   | "commitments"
   | "merchants"
-  | "recurring";
+  | "recurring"
+  | "needs"
+  | "river"
+  | "ruler"
+  | "tiles";
 
 type Span = "full" | "half" | "third";
 
@@ -42,9 +46,15 @@ export const CARDS: Record<CardId, { title: string; span: Span; color: string }>
   commitments: { title: "Compromissos futuros", span: "half", color: "var(--cat-care)" },
   merchants: { title: "Onde você mais gastou", span: "half", color: "var(--cat-shop)" },
   recurring: { title: "Assinaturas e gastos fixos", span: "half", color: "var(--cat-fun)" },
+  needs: { title: "Precisava × vontade", span: "half", color: "var(--cat-shop)" },
+  river: { title: "Rio do dinheiro", span: "full", color: "var(--accent)" },
+  ruler: { title: "Régua do ciclo", span: "full", color: "var(--cat-move)" },
+  tiles: { title: "Categorias em ladrilhos", span: "full", color: "var(--cat-food)" },
 };
 
 const DEFAULT_ORDER = Object.keys(CARDS) as CardId[];
+// Extras (conceito "Fluxo", 2026-10-30): no catálogo, mas começam desligados
+const EXTRAS: CardId[] = ["river", "ruler", "tiles"];
 const STORAGE_KEY = "mf_painel_v1";
 
 const SPAN_COLS: Record<Span, number> = { full: 6, half: 3, third: 2 };
@@ -89,16 +99,18 @@ function readLayout(): Layout {
         const before = DEFAULT_ORDER.slice(0, i).reverse().find((prev) => order.includes(prev));
         order.splice(before ? order.indexOf(before) + 1 : 0, 0, id);
       });
-      return { order, hidden: (saved.hidden ?? []).filter((id) => id in CARDS) };
+      // Extra que este navegador ainda não conhecia chega desligado
+      const fresh = EXTRAS.filter((id) => !saved.order.includes(id));
+      return { order, hidden: [...(saved.hidden ?? []).filter((id) => id in CARDS), ...fresh] };
     }
   } catch {
     /* storage indisponível ou corrompido: volta ao padrão */
   }
-  return { order: DEFAULT_ORDER, hidden: [] };
+  return { order: DEFAULT_ORDER, hidden: EXTRAS };
 }
 
 export function usePanelLayout() {
-  const [layout, setLayout] = useState<Layout>({ order: DEFAULT_ORDER, hidden: [] });
+  const [layout, setLayout] = useState<Layout>({ order: DEFAULT_ORDER, hidden: EXTRAS });
 
   useEffect(() => setLayout(readLayout()), []);
 
@@ -128,7 +140,7 @@ export function usePanelLayout() {
       const dir = layout.order.indexOf(id) < layout.order.indexOf(target) ? 1 : -1;
       save({ ...layout, order: placeBefore(layout.order, id, target, dir) });
     },
-    reset: () => save({ order: DEFAULT_ORDER, hidden: [] }),
+    reset: () => save({ order: DEFAULT_ORDER, hidden: EXTRAS }),
   };
 }
 
@@ -249,6 +261,11 @@ export function PanelCatalog({ layout, onDone }: { layout: PanelLayout; onDone: 
               >
                 <span className="size-2.5 shrink-0 rounded-[3px] bg-[var(--c)]" aria-hidden />
                 <span className="flex-1">{CARDS[id].title}</span>
+                {EXTRAS.includes(id) && (
+                  <span className="rounded-full bg-[color-mix(in_oklab,var(--accent)_16%,transparent)] px-2 py-0.5 text-xs font-semibold text-accent">
+                    Novo
+                  </span>
+                )}
                 <input
                   type="checkbox"
                   className="size-4 accent-[var(--accent)]"

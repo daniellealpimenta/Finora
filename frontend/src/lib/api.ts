@@ -204,6 +204,8 @@ export type WishItem = {
   /** Preço quando foi adicionado e o menor já visto */
   first_price: string;
   lowest_price: string;
+  /** O pote do desejo: quanto já foi separado para ele (meta, não conta) */
+  saved: string;
   created_at: string;
 };
 

@@ -102,6 +102,12 @@
   color-scheme: dark;
 }
 
+/* O fundo do tema de quem usa, resolvido na raiz: dentro de um .theme-dark continua sendo o
+   do tema escolhido (fim da abertura do cofre, que entrega para a Visão geral) */
+:root {
+  --app-bg: var(--background);
+}
+
 /* Trecho sempre escuro (painel da marca no login), nos dois temas */
 .theme-dark {
   --background: #0d1115;

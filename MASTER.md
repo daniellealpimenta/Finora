@@ -46,10 +46,24 @@ Cada ação do usuário tem resposta:
 O overshoot fica só em peças com menos de 48px. Com "reduzir movimento" ligado, tudo aparece no
 estado final.
 
-**Proibido:** parallax, animação ligada ao scroll, elastic ou bounce em áreas grandes, loops
-decorativos, blur ou vidro, escala no hover de cards, sombras coloridas e gradientes de marca.
-A única exceção a "sem loop" é a piscada do Pila: curta (0,18s), rara (a cada 2,6 a 6s) e só
-onde ele é o centro da tela (`alive`).
+**Mais movimento (2026-10-30).** Depois dos três conceitos de redesenho (Cofre, Fluxo e Pila),
+o app ficou mais brincalhão: transições entre páginas, pílula elástica no menu, botões que afundam
+no clique, diálogos que entram com `back.out`, e momentos novos que vieram dos conceitos:
+- **Cofre no login:** depois de entrar, a porta do cofre gira o segredo, recolhe os ferrolhos e
+  abre em 3D antes de liberar o app (`components/vault.tsx`). Também no fim do onboarding.
+- **Fechamento em tela cheia:** abre num círculo, títulos sobem letra a letra (SplitText), valores
+  contam do zero, chuva de moedas no azul (`components/recap.tsx`).
+- **Jogo "Precisava ou foi vontade?":** cartas arrastáveis (Draggable) com carimbo, que voam para o
+  cesto (`components/needs/`). Alimenta o card "Precisava × vontade".
+- **Pote do desejo:** moedas voam em arco (MotionPath) e empilham no pote até a meta; na meta,
+  confete (`components/wish-jar.tsx`).
+- **Cards extras do Fluxo:** rio do dinheiro com partículas, régua do ciclo arrastável e categorias
+  que se abrem com Flip (`components/dashboard/extras.tsx`). Começam desligados.
+
+**Ainda proibido:** parallax, blur ou vidro, sombras coloridas e gradientes de marca em superfícies
+grandes. Elastic e bounce valem em peças pequenas e nos momentos acima (cartas, moedas, pote,
+pílula do menu), nunca no card inteiro do painel. Loops só onde dão informação: a piscada do Pila
+(`alive`) e as partículas do rio, que mostram o dinheiro correndo.
 
 **Padrões permitidos:** linhas finas entre itens de lista, algarismos tabulares, frase-resumo com
 palavras tingidas, selos de ícone coloridos, cor por seção no menu, forma e cor nos status
@@ -330,7 +344,16 @@ Os tokens CSS (`globals.css`) cuidam de hover, foco, tema e campos. Os tokens GS
 | Fechamento: tela | 0.4s | `power3.out` | y 16 → 0; no azul, 18 moedas caem (1,1 a 1,8s) |
 | Toast | entrada 0.4s `back.out(1.6)`, saída 0.2s `power2.in` | | y 24 → 0 |
 | Ícone de tema | 0.4s | `back.out(1.4)` | rotação −180 → 0 |
-| Diálogo | entrada 0.24s `power3.out`, saída 0.15s `power2.in` | | scale 0.96 → 1, autoAlpha; véu em autoAlpha |
+| Diálogo | entrada 0.42s `back.out(1.7)`, saída 0.18s `power2.in` | | scale 0.9 → 1, y 16 → 0, autoAlpha; véu em autoAlpha |
+| Entrada da página | 0.6s | `back.out(1.3)` | y 22 → 0 (`motion.enter`), stagger 0.07 |
+| Troca de página | 0.55s | `power3.out` | `<main>` sobe 28px (`motion.page`) |
+| Pílula do menu | 0.55s | `elastic.out(1, 0.75)` | escorrega até a seção ativa; scaleY 0.7 → 1 |
+| Clique em botão | 120ms | CSS | scale 0.96 (ícone: 0.9) |
+| Cofre (login) | ~4,5s | `dial` (CustomEase) | segredo +620° −230° +95°, ferrolhos x −38, porta rotationY −108° |
+| Fechamento | abre/fecha 0.8s/0.55s `power3.inOut` | | clip-path círculo; letras yPercent 115 → 0, stagger 0.022; valor conta em 1.4s |
+| Carta do jogo | 0.5s `power3.in` | | voa para o cesto girando ±35° e some em scale 0.18; solta sem jogar: volta com `elastic.out(1, 0.5)` |
+| Moeda no pote | 0.75s `power1.inOut` | | arco (MotionPath) até a tampa, achata, cai e quica (`bounce.out`) |
+| Pulinho (`boing`) | 0.6s | `elastic.out(1, 0.5)` | scale 1.18 → 1 em contadores, cestos e selos |
 
 **Reduzir movimento:** toda animação GSAP passa por `gsap.matchMedia()` com
 `(prefers-reduced-motion: reduce)`. Nesse modo, os elementos vão direto ao estado final (`set`).
@@ -338,6 +361,16 @@ O CSS zera as transições no mesmo media query.
 
 Animar só `transform`, `opacity`/`autoAlpha` e atributos de SVG. Nunca `width`, `height`, `top`
 ou `left`.
+
+## Jogo e pote
+
+- **Precisava ou foi vontade?** Cada gasto do ciclo (saídas de categoria de despesa, sem
+  transferências) é uma carta, as maiores primeiro. A jogada fica em `Transaction.need`
+  (true precisava, false vontade, null ainda não). O card "Precisava × vontade" mostra a parte que
+  foi vontade, a comparação com o ciclo anterior, onde a vontade mais pesou, os últimos 6 ciclos e
+  quanto sobraria cortando metade. Também entra no fechamento do ciclo quando há cartas jogadas.
+- **Pote do desejo:** `WishItem.saved`, uma meta por desejo (o dinheiro de verdade continua onde
+  está). Cada R$ 10 vira uma moeda até a linha da meta (42 moedas).
 
 ## Marca e ícone
 

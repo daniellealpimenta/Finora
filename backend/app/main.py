@@ -19,6 +19,7 @@ from app.api.routes import (
     connections,
     dashboard,
     imports,
+    needs,
     notifications,
     pluggy,
     profile,
@@ -104,6 +105,7 @@ def create_app() -> FastAPI:
     app.include_router(transactions.router)
     app.include_router(imports.router)
     app.include_router(dashboard.router)
+    app.include_router(needs.router)
     app.include_router(savings.router)
     app.include_router(cards.router)
     app.include_router(wishlist.router)
