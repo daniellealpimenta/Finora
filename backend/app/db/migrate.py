@@ -8,6 +8,7 @@ import logging
 import shutil
 import sqlite3
 import sys
+from contextlib import closing
 from pathlib import Path
 
 from alembic import command
@@ -44,7 +45,7 @@ def current_revision() -> str | None:
 
 def revision_of(path: Path) -> str | None:
     """Revisão do alembic gravada num arquivo de banco qualquer (de um backup, por exemplo)."""
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn:
         try:
             row = conn.execute("select version_num from alembic_version").fetchone()
         except sqlite3.DatabaseError:

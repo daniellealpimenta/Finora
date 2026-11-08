@@ -24,6 +24,7 @@ import secrets
 import sqlite3
 import tempfile
 import zipfile
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
@@ -65,13 +66,22 @@ def _key(password: str, salt: bytes) -> bytes:
     return base64.urlsafe_b64encode(raw)
 
 
+def _copy_db(source: Path, dest: Path) -> None:
+    """Copia um banco SQLite pela API de backup e fecha as conexões.
+
+    `with sqlite3.connect()` só faz commit, não fecha: no Windows o arquivo continua preso e a
+    pasta temporária não consegue apagá-lo (WinError 32).
+    """
+    with closing(sqlite3.connect(source)) as src, closing(sqlite3.connect(dest)) as dst:
+        src.backup(dst)
+
+
 def _snapshot(dest: Path) -> None:
     """Cópia consistente do banco em uso, mesmo com o app aberto (API de backup do SQLite)."""
     source = migrate.database_path()
     if source is None or not source.is_file():
         raise BackupError("O banco deste computador não é um arquivo SQLite")
-    with sqlite3.connect(source) as src, sqlite3.connect(dest) as dst:
-        src.backup(dst)
+    _copy_db(source, dest)
 
 
 def _carried_env() -> dict[str, str]:
@@ -166,12 +176,10 @@ def restore(data: bytes, password: str) -> dict:
             # Nada de sync gravando no meio da troca
             with sync.exclusive():
                 if target.is_file():
-                    with sqlite3.connect(target) as src, sqlite3.connect(keep) as dst:
-                        src.backup(dst)
+                    _copy_db(target, keep)
                     logger.info("Banco anterior guardado em %s", keep)
                 engine.dispose()
-                with sqlite3.connect(incoming) as src, sqlite3.connect(target) as dst:
-                    src.backup(dst)
+                _copy_db(incoming, target)
                 engine.dispose()
                 migrate.upgrade(backup=False)
                 values = {k: str(v) for k, v in env.items() if k in CARRIED_KEYS and v}
