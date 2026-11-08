@@ -8,7 +8,7 @@ import { api, type WishItem } from "@/lib/api";
 import { money } from "@/lib/format";
 import { boing, FULL, gsap, motion, prefersReducedMotion, useGSAP } from "@/lib/motion";
 import { notify } from "@/lib/signals";
-import { playCoin } from "@/lib/sound";
+import { playSound } from "@/lib/sound";
 import { Pila } from "./pila";
 import { Button, IconButton } from "./ui";
 
@@ -140,9 +140,10 @@ export function WishJar({ item, onClose, onChange }: { item: WishItem; onClose: 
       const hit = saved < price && next >= price;
       setSaved(next);
       onChange(updated);
+      if (amount > 0 && !hit) playSound("coin");
       boing(counter.current, 1.25);
       if (hit) {
-        playCoin();
+        playSound("fanfare");
         confetti();
         notify(`Meta batida: ${item.name}!`, "ok", { mood: "celebrate" });
       }

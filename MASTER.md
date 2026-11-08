@@ -47,8 +47,8 @@ O overshoot fica só em peças com menos de 48px. Com "reduzir movimento" ligado
 estado final.
 
 **Mais movimento (2026-10-30).** Depois dos três conceitos de redesenho (Cofre, Fluxo e Pila),
-o app ficou mais brincalhão: transições entre páginas, pílula elástica no menu, botões que afundam
-no clique, diálogos que entram com `back.out`, e momentos novos que vieram dos conceitos:
+o app ficou mais brincalhão: pílula elástica no menu, botões que afundam no clique, diálogos que
+entram com `back.out`, e momentos novos que vieram dos conceitos:
 - **Cofre no login:** depois de entrar, a porta do cofre gira o segredo, recolhe os ferrolhos e
   abre em 3D antes de liberar o app (`components/vault.tsx`). Também no fim do onboarding.
 - **Fechamento em tela cheia:** abre num círculo, títulos sobem letra a letra (SplitText), valores
@@ -60,9 +60,11 @@ no clique, diálogos que entram com `back.out`, e momentos novos que vieram dos 
 - **Cards extras do Fluxo:** rio do dinheiro com partículas, régua do ciclo arrastável e categorias
   que se abrem com Flip (`components/dashboard/extras.tsx`). Começam desligados.
 
-**Ainda proibido:** parallax, blur ou vidro, sombras coloridas e gradientes de marca em superfícies
-grandes. Elastic e bounce valem em peças pequenas e nos momentos acima (cartas, moedas, pote,
-pílula do menu), nunca no card inteiro do painel. Loops só onde dão informação: a piscada do Pila
+**Ainda proibido:** parallax, blur ou vidro e sombras coloridas. Degradê só em três lugares
+(opção Doca, 2026-11-07): dois brilhos fixos e bem fracos no fundo da página (latão no alto,
+violeta `--accent-2` embaixo), o brilho atrás do número da Conta do ciclo e a área do Ritmo de
+gastos (latão → violeta). Cards continuam lisos. Elastic e bounce valem em peças pequenas e nos momentos acima (cartas, moedas, pote,
+atalhos da Visão geral, ícones da doca), nunca no card inteiro do painel. Loops só onde dão informação: a piscada do Pila
 (`alive`) e as partículas do rio, que mostram o dinheiro correndo.
 
 **Padrões permitidos:** linhas finas entre itens de lista, algarismos tabulares, frase-resumo com
@@ -83,33 +85,37 @@ Os tokens são definidos em `:root`, com o tema claro como padrão. O escuro é 
 
 | Token | Claro | Escuro | Uso |
 |---|---|---|---|
-| `--background` | `#D3DAE2` | `#0D1115` | fundo da página |
+| `--background` | `#EEF1F5` | `#0D1115` | fundo da página |
 | `--surface` | `#FFFFFF` | `#141A20` | cards, barra do menu, campos |
-| `--surface-2` | `#E4E9EF` | `#1B232A` | trilhas, hover, item ativo neutro |
-| `--border` | `#B4C0CC` | `#26303A` | linhas finas entre itens, contorno de campo |
-| `--grid` | `#D6DDE4` | `#1F272F` | grade dos gráficos |
-| `--foreground` | `#0A1016` | `#E6EBEF` | texto |
-| `--muted` | `#3B4754` | `#8C99A5` | texto secundário, rótulos |
+| `--surface-2` | `#F1F4F8` | `#1B232A` | trilhas, hover, item ativo neutro |
+| `--border` | `#D9DFE7` | `#26303A` | linhas finas entre itens, contorno de campo |
+| `--grid` | `#E7EBF0` | `#1F272F` | grade dos gráficos |
+| `--foreground` | `#111827` | `#E6EBEF` | texto |
+| `--muted` | `#4B5563` | `#8C99A5` | texto secundário, rótulos |
 | `--accent` | `#8A5300` | `#D2AC6A` | latão: ação primária, marca, "R$" |
 | `--accent-fg` | `#FFFFFF` | `#17120A` | texto sobre o latão |
 | `--positive` | `#00745B` | `#4FCBA8` | bom, receitas |
 | `--negative` | `#C1311A` | `#F2876B` | ruim, despesas |
 | `--warning` | `#9A5000` | `#F0A848` | atenção |
 | `--series-ref` | `#8A949E` | `#5E6A75` | série de referência (mês anterior) |
-| `--card-edge` | `#B9C5D0` | transparente | contorno de 1px dos cards (só o claro precisa) |
+| `--card-edge` | `#E1E6ED` | transparente | contorno de 1px dos cards (só o claro precisa) |
 | `--tint` | `22%` | `15%` | força do fundo tingido dos selos e pílulas |
 
-Tema claro revisto de novo em 2026-10-27 (o usuário achou ruim de ver): fundo mais fundo para os
+Tema claro refeito em 2026-11-07 (o cinza-azulado `#D3DAE2` do fundo ficou pesado e feio): fundo
+quase branco e frio, cards brancos com contorno suave e linhas leves. Contraste sobre o card:
+texto 17,7:1, suave 7,6:1, latão 6,3:1, positivo 5,8:1, negativo 5,6:1, atenção 6,0:1 (todos
+acima de 4,9:1 também sobre o fundo e sobre `--surface-2`).
+
+Antes, em 2026-10-27 (o usuário achou ruim de ver): fundo mais fundo para os
 cards brancos se destacarem, linhas visíveis, texto suave mais escuro (9,5:1) e cores de detalhe
-mais saturadas; o latão vira um âmbar mais vivo. A barra do topo é grafite nos dois temas
-(`theme-dark` no `<header>`): âncora do layout e a moeda de latão brilhando nela.
+mais saturadas; o latão vira um âmbar mais vivo. (A barra grafite do topo saiu em 2026-11-06,
+com a casca "Doca"; ver "Casca do app".)
 
 Antes, em 2026-10-17 (estava lavado): card sobre o fundo passou de 1,1:1 para
 1,28:1, linha sobre o card de 1,31:1 para 1,63:1, texto suave de 6,3:1 para 7,6:1.
 
 Contraste sobre `--surface` (WCAG):
-- **Claro:** texto 19,1:1, suave 9,5:1, latão 6,3:1, positivo 5,8:1, negativo 5,6:1, atenção 6,0:1;
-  cores de detalhe entre 5,6:1 e 7,3:1 (todas acima de 4,7:1 sobre `--surface-2`).
+- **Claro:** texto 17,7:1, suave 7,6:1, latão 6,3:1, positivo 5,8:1, negativo 5,6:1, atenção 6,0:1.
 - **Escuro:** texto 14,6:1, suave 6,0:1, latão 8,2:1, positivo 8,7:1, negativo 7,1:1, atenção 8,7:1.
 
 Todos passam de 4,5:1 também sobre `--surface-2`.
@@ -149,7 +155,7 @@ escuro, o que permite usá-la também como texto (palavras marcadas na frase-res
 | Cofrinhos | `--cat-care` (rosa, a cor do Pila) |
 | Contas | `--cat-fun` |
 | Desejos | `--cat-shop` |
-| Assistente | `--cat-fin` (no celular, botão no topo; a barra inferior fica com 6) |
+| Assistente | `--cat-fin` (no celular, botão no topo) |
 
 **Categorias** (chave do backend → família → ícone Lucide):
 
@@ -222,12 +228,94 @@ Regras:
   painel (no celular, quase a tela toda, acima da barra de seções). Por flutuar sobre o conteúdo,
   usa a borda `--card-edge` dos diálogos, sem sombra. Os avisos (toasts) sobem para acima dele.
 
+## Casca do app (opção "Doca", 2026-11-06)
+
+Nada fica preso no topo. Escolhida entre três opções (Trilho, Doca e Comando) com espaçamento
+normal, cantos suaves e movimento completo:
+- **Marca e avatar** numa linha que rola com a página (`app/(app)/layout.tsx`): a moeda e
+  "Finora" à esquerda, o botão "Buscar ou ir para… ⌘K" e o avatar à direita.
+- **Seções** na doca embaixo (desktop) ou na barra flutuante (celular).
+- **Sincronizar, tema, sons, perfil e sair** no menu do avatar e no ⌘K. A moeda da marca
+  continua girando durante o sync, de qualquer tela (`lib/sync.ts`).
+- **Atalhos** em pastel no topo da Visão geral, acima das zonas.
+
 ## Painel personalizável
 
-A Visão geral é um catálogo de 12 cards (`components/dashboard/panel.tsx`) numa grade de 6
-colunas: inteiro, metade ou um terço; no celular, uma coluna. "Personalizar" liga e desliga
-cards, reordena (arrastar, ou setas para quem usa teclado) e restaura o padrão. A escolha fica
-no `localStorage` (`mf_painel_v1`): é preferência de quem usa, não dado financeiro.
+A Visão geral é um catálogo de 19 cards (`components/dashboard/panel.tsx`) em **três zonas
+fixas** (revisão de design de 2026-11-06, Gestalt: proximidade):
+
+| Zona | Pergunta | Cards |
+|---|---|---|
+| **Agora** | o que está na mão | Conta do ciclo, Previsão, Cofrinhos, Cartões, Reserva |
+| **Este ciclo** | como está indo | Para onde foi, Precisava × vontade, Saúde, Ritmo, Receitas e despesas, Onde mais gastou, Rio, Régua, Ladrilhos |
+| **Depois** | o que já está combinado | Faturas, Compromissos, Parcelas, Gastos fixos, Assinaturas |
+
+O título da zona (Bricolage 20px/700 e a pergunta em `--muted`) agrupa sem caixa a mais, com 32px
+entre zonas. Zona sem card ligado some. Cada zona tem a sua grade de 6 colunas: inteiro, metade
+ou um terço; no celular, uma coluna.
+
+**Montagem livre (2026-11-07).** Em "Personalizar o painel", cada card ligado ganha uma barra com:
+arrastar (para qualquer lugar, inclusive outra zona: soltar sobre um card põe no lugar dele,
+soltar na zona põe no fim dela; montando, zonas vazias mostram "Solte um card aqui"), − e + para a largura (⅓, ½, ⅔ ou inteiro), altura
+dupla (o card ocupa duas linhas e os vizinhos empilham ao lado, montando colunas; a grade usa
+`grid-flow-row-dense`), mover para antes ou depois (teclado; atravessa zonas) e tirar. Largura escolhida é respeitada;
+só a padrão estica, para a direita, enquanto houver espaço vazio na linha (`packRows` simula o
+posicionamento dense do CSS, contando os cards de altura dupla). Toda mudança anima com
+Flip (0,5s `power3.inOut`). O selo "Novo" nos cards novos some quando a pessoa liga o card pela
+primeira vez (`tried`).
+
+**Visualizações.** Os cards com dados em série trocam de visualização por botões no título
+(`components/dashboard/views.tsx`), e a escolha fica salva no painel:
+
+| Card | Visualizações |
+|---|---|
+| Receitas e despesas | barras, linha, tabela |
+| Para onde foi o dinheiro | rosca, lista, tabela |
+| Ritmo de gastos | linha, tabela |
+| Compromissos futuros | barras, tabela |
+| Onde você mais gastou | lista, rosca |
+| Assinaturas e gastos fixos | lista, tabela |
+| Cofrinhos | anéis de meta, lista |
+
+A primeira opção é a inicial: "Para onde foi" abre na rosca e Cofrinhos nos anéis.
+
+**Últimas transações** (`dashboard/recent.tsx`, card novo): as 6 mais recentes em linha do
+tempo, com data, ponto na cor da categoria ligado por linha fina e valor (entrada em verde).
+
+A rosca mostra o total no meio (centavos apagados); passar o mouse numa fatia mostra o valor dela
+e apaga as outras; fatias abaixo de 3% viram "Outros".
+
+**Onde fica salvo.** No app (`AppSetting` "panel", `GET`/`PUT /panel`), com cópia no
+localStorage. Antes ficava só no localStorage, e o programa, com o pywebview em modo privado,
+apagava tudo ao fechar; agora a janela abre com `private_mode=False` e guarda o armazenamento em
+`<pasta de dados>/webview` (vale também para tema, som e fechamento visto).
+
+**Padrão (2026-11-07)**: a montagem que o Daniel salvou como ideal.
+
+| Zona | Cards |
+|---|---|
+| Agora | Conta do ciclo e Previsão (inteiros) |
+| Este ciclo | Saúde e Reserva; Rio do dinheiro; Ritmo e Receitas e despesas; Ladrilhos; Faturas e Cartões; Para onde foi, Gastos fixos e Cofrinhos; Parcelas e Onde mais gastou; Régua |
+| Depois | Assinaturas e Precisava × vontade |
+
+Compromissos futuros e Últimas transações ficam no catálogo. "Voltar ao padrão" está nos três
+pontinhos ao lado do seletor de ciclo e no catálogo; volta a montagem e mantém as visualizações
+escolhidas e os selos já vistos.
+
+**Três pontinhos** (`dashboard/panel-menu.tsx`), ao lado do seletor de ciclo: Personalizar o
+painel (ou Concluir), Voltar ao padrão e Rever o fechamento. O catálogo abre no topo do painel.
+
+**Avisos do topo fecham** (X): a faixa do fechamento e a de banco parado. Fechar vale para aquele
+assunto (`lib/dismiss.ts`): outro ciclo fechado ou outro banco parado traz o aviso de volta.
+
+No topo da Visão geral fica só o seletor de ciclo. O fechamento pronto vira uma faixa tingida de
+latão ("O fechamento de outubro está pronto · Ver"), acima das zonas.
+
+**Banco parado** (`components/stale-note.tsx`, `lib/stale.ts`): quando a transação mais recente
+de um banco tem mais de 10 dias, uma faixa em `--warning` avisa ("Nubank sem transações novas
+desde 10/10") e manda para Contas, onde a conta mostra "▲ Sem transações novas desde …". Pelo
+MeuPluggy, sincronizar não traz nada se o banco parou de mandar dados, e sem o aviso o painel
+mostra dados velhos como se estivessem em dia. 10 dias para conta pouco usada não virar alarme.
 
 O topo usa regime de caixa no mês atual ("Em conta agora": saldo das contas correntes) e
 resultado do mês (receitas menos despesas) nos meses fechados.
@@ -261,8 +349,7 @@ automático do `next/font`. As duas têm `tnum`.
 | Rótulo | 12px / 500 | `--muted`, em caixa normal ("Livre agora"), nunca em maiúsculas espaçadas |
 | Nota / ajuda | 13px / 400 | `--muted`, line-height 1.5 |
 
-Nenhum texto abaixo de 12px (a única exceção é o rótulo da barra inferior no celular, 10,5px,
-por caber 6 abas). Card com ícone tem título de card (15px/600), inclusive os índices; rótulo
+Nenhum texto abaixo de 12px, inclusive o rótulo da barra inferior no celular. Card com ícone tem título de card (15px/600), inclusive os índices; rótulo
 só acima de um número, nunca como título.
 
 Saída de dinheiro leva "−" (`outflow()` em `lib/format.ts`), mas zero fica sem sinal: "R$ 0,00".
@@ -278,14 +365,17 @@ linha.
 
   | Token | Valor | Uso |
   |---|---|---|
-  | `--radius-chip` (`--r-chip`) | 8px | selo de ícone |
-  | `--radius-control` (`--r-control`) | 10px | botões, campos |
-  | `--radius-card` (`--r-card`) | 14px | cards, diálogos |
+  | `--radius-chip` (`--r-chip`) | 10px | selo de ícone |
+  | `--radius-control` (`--r-control`) | 12px | botões, campos |
+  | `--radius-card` (`--r-card`) | 18px | cards, diálogos, menu do avatar |
+
+  Cantos "suaves" desde 2026-11-06 (antes 8, 10 e 14). A doca usa 24px e os atalhos
+  `--r-card` + 8px.
   | `full` | 999px | só pílulas e barras |
 
 - **Sombras:** nenhuma. A hierarquia vem do tom da superfície. A única exceção é o diálogo, que
   usa um véu `rgb(0 0 0 / 0.45)` atrás.
-- **Z-index:** menu 30, barra inferior (mobile) 30, diálogo 50, aviso (toast) 60.
+- **Z-index:** doca e barra do celular 30, menu do avatar 40, botão do assistente 40, diálogo e ⌘K 50, aviso (toast) 60.
 - **Toque:** área clicável mínima de 40px no desktop e 44px no mobile.
 
 ## Componentes
@@ -293,8 +383,8 @@ linha.
 | Componente | Especificação |
 |---|---|
 | **Button** | 40px de altura, `--radius-control`, 14px/600 |
-| **IconButton** | 36px (desktop) ou 44px (mobile), com `aria-label` obrigatório |
-| **Input / Select** | `--surface`, borda `--border`; foco com borda `--accent` e anel de 3px em `--accent` a 25% |
+| **IconButton** | 40px (desktop) ou 44px (mobile), com `aria-label` obrigatório |
+| **Input / Select** | `--surface`, borda `--border`; foco com borda `--accent` e anel de 3px em `--accent` a 25% (box-shadow, acompanha o canto). O contorno genérico de foco mora em `@layer base` para não desenhar um segundo retângulo em volta dos campos |
 | **Conta (EqRow)** | conta de dinheiro mostrada inteira, linha a linha: coluna de operação (`+ − = ÷`) em Bricolage 700 `--muted`, rótulo com a origem embaixo (12px), valor tabular à direita. Toda parcela aparece, mesmo valendo zero ("todas já caíram"); linhas `=` em 600 com linha `--border` em cima. Usada na Previsão do ciclo |
 | **Select em lista** | controle repetido em cada linha (categoria da transação): `--surface-2`, sem contorno; a borda `--border` só aparece no hover e o foco é igual ao do Input |
 | **Salvar em lista** | some (`invisible`, guarda o lugar) até a linha ter mudança; Enter também salva |
@@ -303,7 +393,11 @@ linha.
 | **CategoryIcon** | 36px (lista) ou 28px (compacto), `--radius-chip`, fundo tingido e ícone Lucide na cor da família |
 | **Meter** | trilha `--surface-2` de 8px, preenchimento na cor semântica, escala embaixo nomeando a meta |
 | **Toast** | fundo `--foreground`, texto `--background`, canto inferior direito, some em 3s |
-| **Nav** | barra superior em `--surface` com linha `--border` embaixo. O item ativo tem fundo da cor da seção a 13%; o ícone fica sempre na cor da seção. Abaixo de 640px, as quatro seções viram uma barra inferior fixa |
+| **Doca** (`components/shell/dock.tsx`) | seções numa doca flutuante embaixo, centrada: `--surface` a 90%, borda `--card-edge`, raio 24px. Itens de 48px em `--surface-2`, raio 15px, ícone na cor da seção; crescem até 70px perto do ponteiro. Ativo: ponto de 5px embaixo. Nome num balão ao passar o mouse. O Assistente fica separado por uma linha, e o último item abre o ⌘K |
+| **Barra do celular** (`shell/mobile-nav.tsx`) | abaixo de 640px a doca vira uma barra flutuante (inset 12px, raio 24px) com 5 abas no máximo: Visão geral, Transações, Orçamentos, Cofrinhos e "Mais" (Desejos, Contas, Assistente). Rótulo em 12px |
+| **Menu do avatar** (`shell/account-menu.tsx`) | círculo de 44px com a inicial, no canto direito da linha da marca. Abre: sincronizar, tema, sons, avisos de banco parado (ponto `--warning` no avatar), Perfil e Sair |
+| **⌘K** (`shell/palette.tsx`) | paleta de comandos (⌘K ou Ctrl+K, botão "Buscar ou ir para…" e item da doca): ir para seção, sincronizar, tema, sons, perfil e sair. Setas, Enter e Esc |
+| **Atalho** (`dashboard/actions.tsx`) | botão grande em pastel (`--tile-gold`, `--tile-blue`, `--tile-violet`, `--tile-pink`, tinta `--tile-ink`, iguais nos dois temas) com brilho de cima, ícone, título em Bricolage e um número real embaixo. Quatro na Visão geral: Guardar, Fatura, Precisava?, Desejos |
 
 Estados de cada componente:
 
@@ -327,7 +421,7 @@ Os tokens CSS (`globals.css`) cuidam de hover, foco, tema e campos. Os tokens GS
 
 | Momento (GSAP) | Duração | Ease | Detalhe |
 |---|---|---|---|
-| Entrada da página | 0.5s | `power3.out` | y 12 → 0, autoAlpha, stagger 0.06 |
+| Entrada da página | 0.5s | `power3.out` | y 16 → 0, autoAlpha, stagger 0.06 (`motion.enter`). Sem overshoot: o card inteiro nunca passa do ponto |
 | Contador do herói (CSS) | 0.9s | `cubic-bezier(0.2, 0.9, 0.1, 1)` | cada dígito rola do anterior (ou 0) ao novo, cascata de 45ms |
 | Anel de saúde | 1.0s | `power2.out` | `stroke-dashoffset` |
 | Selo de status | 0.4s | `back.out(2)` | scale 0.6 → 1; brilho em 0.7s `power2.inOut`, uma vez |
@@ -345,11 +439,13 @@ Os tokens CSS (`globals.css`) cuidam de hover, foco, tema e campos. Os tokens GS
 | Toast | entrada 0.4s `back.out(1.6)`, saída 0.2s `power2.in` | | y 24 → 0 |
 | Ícone de tema | 0.4s | `back.out(1.4)` | rotação −180 → 0 |
 | Diálogo | entrada 0.42s `back.out(1.7)`, saída 0.18s `power2.in` | | scale 0.9 → 1, y 16 → 0, autoAlpha; véu em autoAlpha |
-| Entrada da página | 0.6s | `back.out(1.3)` | y 22 → 0 (`motion.enter`), stagger 0.07 |
-| Troca de página | 0.55s | `power3.out` | `<main>` sobe 28px (`motion.page`) |
-| Pílula do menu | 0.55s | `elastic.out(1, 0.75)` | escorrega até a seção ativa; scaleY 0.7 → 1 |
+| Troca de página | 0.3s | `power2.out` | `<main>` só aparece (autoAlpha, `motion.page`); quem sobe são os cards, para não somar dois movimentos |
+| Doca (entrar) | 0.7s | `back.out(1.4)` | sobe 90px ao abrir o app |
+| Doca (ímã) | 0.25s | `power3.out` | cada ícone cresce até +22px conforme a distância do ponteiro (130px de alcance) |
+| Atalhos | 0.6s `back.out(2)` ao entrar (scale 0.85, leve giro); clique: scale 0.92 → 1 `elastic.out(1, 0.5)` | | |
+| Menu do avatar e ⌘K | 0.3s | `back.out(1.8)` / `back.out(1.6)` | descem 8 a 14px e crescem de 0.96 |
 | Clique em botão | 120ms | CSS | scale 0.96 (ícone: 0.9) |
-| Cofre (login) | ~4,5s | `dial` (CustomEase) | segredo +620° −230° +95°, ferrolhos x −38, porta rotationY −108° |
+| Cofre (login) | ~5s | `dial` (CustomEase) | segredo +620° −230° +95°, ferrolhos x −38, maçaneta 90°. Um anel de luz escapa em volta da porta (0,7s `sine.inOut`); a porta abre (rotationY −108°, 1,25s `power2.inOut`) enquanto a câmera avança (scale 1,35, 1,7s); a luz quente nasce do vão (scale 0,08 → 1, 1,15s `expo.inOut`, degradê longo, sem borda dura) e o fundo do app entra por cima dela em 0,7s. Antes era um clarão amarelo trocado de uma vez pelo fundo |
 | Fechamento | abre/fecha 0.8s/0.55s `power3.inOut` | | clip-path círculo; letras yPercent 115 → 0, stagger 0.022; valor conta em 1.4s |
 | Carta do jogo | 0.5s `power3.in` | | voa para o cesto girando ±35° e some em scale 0.18; solta sem jogar: volta com `elastic.out(1, 0.5)` |
 | Moeda no pote | 0.75s `power1.inOut` | | arco (MotionPath) até a tampa, achata, cai e quica (`bounce.out`) |
@@ -392,9 +488,33 @@ Lê em 16px e diz "cofrinho" sem precisar do porco inteiro.
 
 ## Som
 
-Ligado por padrão (desde 2026-10-27); o botão no topo (som de moeda) desliga. Um "tlim"
-sintetizado (`lib/sound.ts`, duas notas senoidais de 0,35s) só quando dinheiro entra: sync com
-novidade, cofrinho que cresceu, fechamento no azul. Escolha em `localStorage` (`mf_sound`).
+Cinco sons sintetizados (`lib/sound.ts`, `playSound(kind)`), todos com menos de 0,4s e em Dó
+maior para soarem como família. Cada um tem um significado só (revisão de 2026-11-06):
+
+| Som | Significado | Onde |
+|---|---|---|
+| `coin` | dinheiro entrou | sync com novidade, cofrinho que cresceu, moeda no pote. O "tlim" de sempre: 1568 e 2093 Hz, sem filtro (o Daniel prefere este) |
+| `tap` | ação confirmada | trocar categoria, jogar carta, botões de card e menus. Discreto desde 2026-11-07: "tuc" de 45ms em ~520 Hz, baixinho, com a altura variando ±4% a cada clique para não cansar |
+| `whoosh` | algo abriu | fechamento do ciclo, porta do cofre |
+| `low` | atenção | senha errada (duas notas descendo, sem cara de alarme) |
+| `fanfare` | conquista | meta do pote batida, ciclo que fechou no azul, jogo com pouca vontade |
+| `tick`, `clunk`, `latch`, `door` | o cofre abrindo | clique do segredo a cada 5 números, baque dos ferrolhos (4, em pares), "clac" da maçaneta e a porta pesada (rangido grave, ronco e o ar entrando) |
+
+O onboarding pergunta ("Quer ouvir os sons do app?") e toca a moeda como amostra; o botão do topo
+liga e desliga. Sem escolha, fica ligado. Nunca toca sem um gesto da pessoa antes e nunca dura
+mais de 3s. Escolha em `localStorage` (`mf_sound`).
+
+## Outro computador (2026-11-07)
+
+Sem nuvem: os dados viajam num arquivo `.finora` (`services/backup.py`). Cabeçalho em texto
+(computador, data, versão, revisão do banco, dono) e o resto criptografado com a senha da
+exportação (Scrypt + Fernet): o banco inteiro e as chaves do `.env` que os dados precisam (2FA,
+Pluggy, e-mail). Importar troca os dados e guarda o banco anterior; arquivo de versão mais nova é
+recusado. Onde aparece: card **Usar em outro computador** no Perfil (`profile/transfer.tsx`),
+**Traga seus dados** na tela de boas-vindas (`/setup/import`, só sem usuário), item no menu do
+avatar e comando no ⌘K. Depois de importar, volta ao login com o aviso "Dados de <computador>
+trazidos". O arquivo vai para Downloads (o navegador do programa não baixa arquivos) com o botão
+**Mostrar na pasta**.
 
 ## Texto
 

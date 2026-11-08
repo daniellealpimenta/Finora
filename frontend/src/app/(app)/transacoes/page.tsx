@@ -31,6 +31,7 @@ import { cycleName, useCycle } from "@/lib/cycle";
 import { money, percent } from "@/lib/format";
 import { usePageEnter } from "@/lib/motion";
 import { notify } from "@/lib/signals";
+import { playSound } from "@/lib/sound";
 
 const PAGE_SIZE = 50;
 const KIND_LABEL = { EXPENSE: "Despesas", INCOME: "Receitas", TRANSFER: "Movimentações" };
@@ -484,6 +485,7 @@ function RecategorizeDialog({
           rule_pattern: createRule ? pattern : null,
         }),
       });
+      playSound("tap");
       close(onSaved);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

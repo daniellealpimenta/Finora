@@ -75,6 +75,38 @@ def test_parse_product_falls_back_to_open_graph_and_title():
     assert (empty["name"], empty["price"], empty["image_url"]) == ("Só o título", None, None)
 
 
+def test_parse_product_finds_image_in_microdata_and_link_rel():
+    micro = '<meta itemprop="name" content="Mesa"><img itemprop="image" src="/m.jpg">'
+    p = wishlist.parse_product(micro, "https://loja.com/mesa")
+    assert (p["name"], p["image_url"]) == ("Mesa", "https://loja.com/m.jpg")
+    linked = wishlist.parse_product(
+        '<link rel="image_src" href="https://cdn/x.png">', "https://a.com/"
+    )
+    assert linked["image_url"] == "https://cdn/x.png"
+
+
+def test_name_from_url_reads_the_slug():
+    url = "https://www.mercadolivre.com.br/vittak-barra-fixa-para-porta-de-aco/p/MLB37965210?x=1"
+    assert wishlist.name_from_url(url) == "Vittak Barra Fixa para Porta de Aco"
+    old = "https://produto.mercadolivre.com.br/MLB-1234567-tenis-nike-air-max-_JM"
+    assert wishlist.name_from_url(old) == "Tenis Nike Air Max"
+    assert wishlist.name_from_url("https://www.amazon.com.br/dp/B0ABC") is None
+
+
+@respx.mock
+def test_fetch_keeps_product_link_when_store_asks_for_verification():
+    """Mercado Livre manda para "verificação de conta": o link guardado é o do produto (não o da
+    verificação), o nome sai do link e o nome da loja não vira nome do produto."""
+    product = "https://www.mercadolivre.com.br/barra-fixa-para-porta/p/MLB1"
+    wall = "https://www.mercadolivre.com.br/gz/account-verification?go=x"
+    respx.get(product).mock(return_value=httpx.Response(302, headers={"location": wall}))
+    respx.get(wall).mock(return_value=httpx.Response(200, text="<title>Mercado Libre</title>"))
+    p = wishlist.fetch_product(product)
+    assert p["url"] == product
+    assert p["name"] == "Barra Fixa para Porta"
+    assert (p["price"], p["image_url"], p["store"]) == (None, None, "mercadolivre.com.br")
+
+
 @pytest.mark.parametrize(
     "url",
     ["http://127.0.0.1:8000/auth/me", "http://192.168.0.1/", "http://[::1]/", "file:///etc/passwd"],

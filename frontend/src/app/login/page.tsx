@@ -11,6 +11,7 @@ import { Button, ErrorNote, cx, inputClass, tone } from "@/components/ui";
 import { VaultOpening } from "@/components/vault";
 import { ApiError, api, login, type SetupStatus } from "@/lib/api";
 import { usePageEnter } from "@/lib/motion";
+import { playSound } from "@/lib/sound";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -26,6 +27,8 @@ export default function LoginPage() {
   const [remembered, setRemembered] = useState(false);
   // Entrou: a porta do cofre abre e só então libera o app
   const [opening, setOpening] = useState(false);
+  // Veio de uma importação (Perfil ou boas-vindas): de qual computador vieram os dados
+  const [importedFrom, setImportedFrom] = useState<string | null>(null);
   const root = useRef<HTMLElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
@@ -33,6 +36,7 @@ export default function LoginPage() {
 
   // Primeira abertura (nenhum usuário no banco): vai para o onboarding
   useEffect(() => {
+    setImportedFrom(new URLSearchParams(window.location.search).get("importado"));
     api<SetupStatus>("/setup")
       .then((s) => s.needs_user && router.replace("/bem-vindo"))
       .catch(() => {});
@@ -64,6 +68,7 @@ export default function LoginPage() {
         setError("Digite o código de 6 dígitos do seu app autenticador.");
         return;
       }
+      playSound("low");
       setError(
         err instanceof ApiError
           ? err.message
@@ -144,6 +149,15 @@ export default function LoginPage() {
             <h2 className="font-display text-[28px] font-bold tracking-[-0.02em]">Entrar</h2>
             <p className="text-sm text-muted">Bem-vindo de volta.</p>
           </div>
+          {importedFrom && (
+            <p
+              role="status"
+              style={tone("var(--positive)")}
+              className="tint rounded-control px-3 py-2.5 text-sm text-foreground"
+            >
+              Dados de <b>{importedFrom}</b> trazidos. Entre com a sua conta de lá (e-mail e senha do outro computador).
+            </p>
+          )}
           <div className="grid gap-1.5">
             <label htmlFor="login" className="label">
               E-mail ou usuário

@@ -47,6 +47,8 @@ categoriza os gastos e mostra, ciclo a ciclo, quanto dá para gastar sem apertar
   Finance), mas a sua cópia fica só na sua máquina, num arquivo SQLite.
 - 🤖 O assistente usa um modelo rodando no seu computador (Ollama). Nenhuma transação vai para
   API de terceiros.
+- 💻 Usa em mais de um computador (Mac e Windows)? Leve tudo num arquivo protegido por senha:
+  veja [Usando em mais de um computador](#-usando-em-mais-de-um-computador).
 
 ## ✨ O que ele faz
 
@@ -256,6 +258,37 @@ guarda antes uma cópia (`managerfinance.db.bak`).
 - No modo web (rodando pelo código) o aviso não aparece: lá a atualização é o `git pull`.
 
 </details>
+
+#### 💻 Usando em mais de um computador
+
+O Finora não tem nuvem, então os dados não se sincronizam sozinhos. Para ter as mesmas
+transações, categorias, cofrinhos, desejos, painel e configurações em outro computador (Mac ou
+Windows, tanto faz a combinação):
+
+1. No computador com os dados mais recentes: **Perfil → Usar em outro computador → Exportar
+   dados**. Escolha uma senha. O arquivo `Finora-<computador>-<data>.finora` vai para a pasta
+   **Downloads** (o botão **Mostrar na pasta** abre ela).
+2. Leve o arquivo para o outro computador: pendrive, e-mail, AirDrop ou uma pasta do iCloud
+   Drive, Google Drive ou OneDrive.
+3. No outro computador: **Perfil → Usar em outro computador → Importar dados**, escolha o
+   arquivo e digite a senha. Num Finora recém-instalado, dá para fazer isso já na tela de
+   boas-vindas: **Já usa o Finora em outro computador? Traga seus dados**.
+4. Entre com a sua conta de lá (o mesmo e-mail e senha).
+
+Bom saber:
+
+- 🔐 O arquivo vai **criptografado com a sua senha** (leva também as chaves da Pluggy). Sem ela
+  ninguém abre, nem você, então guarde bem.
+- 🔁 **Quem importa por último vence.** Importar troca os dados do computador pelos do arquivo.
+  Antes de mexer em outro computador, traga o arquivo mais recente. Uma cópia do que havia fica
+  guardada na pasta de dados (`managerfinance-antes-da-importacao-<data>.db`).
+- ⬆️ Os dois computadores precisam estar com a **mesma versão do Finora** (ou o de destino mais
+  nova). Arquivo de uma versão mais nova é recusado com um aviso para atualizar.
+- 🏦 Os dados dos bancos continuam vindo da Pluggy: depois de importar, o sync de cada computador
+  segue normal.
+
+Também dá para chegar lá pelo menu do seu avatar (**Usar em outro computador**) ou pelo ⌘K
+(Ctrl+K no Windows): "Exportar ou importar dados".
 
 #### 📂 Onde ficam as coisas
 

@@ -151,6 +151,10 @@ export type Account = {
   bill_close_date: string | null;
   /** Cartão: dia de fechamento escolhido pelo usuário (null = estimado pelas faturas) */
   closing_day: number | null;
+  /** Transação mais recente que chegou (GET /connections) */
+  last_transaction_date?: string | null;
+  /** Banco em poucas letras ("Nubank"), também pelo MeuPluggy (GET /connections) */
+  bank?: string | null;
 };
 
 /** Aplicação (caixinha, CDB...) que chega da Pluggy (GET /investments). */
@@ -181,6 +185,10 @@ export type SavingsPot = {
   applied: string;
   earned: string;
   investments: number;
+  /** O banco repete o mesmo saldo desde esta data (Open Finance parado) */
+  frozen_since?: string | null;
+  /** Quanto deve estar hoje, pela média de rendimento por dia útil */
+  estimated_balance?: string | null;
 };
 
 export type WishStatus = "WANTED" | "BOUGHT" | "DROPPED";

@@ -21,8 +21,8 @@ export const REDUCED = "(prefers-reduced-motion: reduce)";
 export const FULL = "(prefers-reduced-motion: no-preference)";
 
 export const motion = {
-  // Entradas com mais corpo (2026-10-30): sobem mais e assentam com um leve passo além
-  enter: { y: 22, duration: 0.6, ease: "back.out(1.3)", stagger: 0.07 },
+  // Entrada dos cards: sem overshoot, que fica só nas peças pequenas (revisão de 2026-11-06)
+  enter: { y: 16, duration: 0.5, ease: "power3.out", stagger: 0.06 },
   count: { duration: 0.9, ease: "power2.out" },
   ring: { duration: 1, ease: "power2.out" },
   pop: { duration: 0.4, ease: "back.out(2)" },
@@ -40,8 +40,8 @@ export const motion = {
   theme: { duration: 0.4, ease: "back.out(1.4)" },
   dialogIn: { scale: 0.9, y: 16, duration: 0.42, ease: "back.out(1.7)" },
   dialogOut: { scale: 0.94, y: 8, duration: 0.18, ease: "power2.in" },
-  /** Troca de página: o conteúdo novo sobe e assenta */
-  page: { y: 28, duration: 0.55, ease: "power3.out" },
+  /** Troca de página: só um fade curto; quem sobe são os cards (enter), para não somar dois movimentos */
+  page: { duration: 0.3, ease: "power2.out" },
   /** Elástico curto para peças pequenas (selos, contadores, botões de ícone) */
   spring: { duration: 0.6, ease: "elastic.out(1, 0.5)" },
   /** Carta jogada (Precisava ou vontade) e moeda voando para o pote */

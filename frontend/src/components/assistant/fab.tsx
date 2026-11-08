@@ -48,7 +48,7 @@ export function AssistantFab() {
         }
         title={open ? "Fechar" : `Conversar com o ${name}`}
         className={cx(
-          "fixed right-4 bottom-[calc(76px+env(safe-area-inset-bottom,0px))] z-40 grid size-14 place-items-center rounded-full sm:right-6 sm:bottom-6",
+          "fixed right-4 bottom-[calc(88px+env(safe-area-inset-bottom,0px))] z-40 grid size-14 place-items-center rounded-full sm:right-6 sm:bottom-6",
           "border border-card-edge bg-surface transition-colors duration-[var(--dur-fast)] ease-[var(--ease-out)] hover:bg-surface-2",
           // No celular o painel ocupa a tela e tem o próprio "fechar"
           open && "max-sm:hidden",
@@ -128,7 +128,7 @@ function ChatPanel({ onClose }: { onClose: () => void }) {
       className={cx(
         "fixed z-40 flex flex-col gap-3 rounded-card border border-card-edge bg-surface p-4",
         // Celular: quase a tela toda, acima da barra de seções
-        "inset-x-2 top-16 bottom-[calc(72px+env(safe-area-inset-bottom,0px))]",
+        "inset-x-2 top-4 bottom-[calc(84px+env(safe-area-inset-bottom,0px))]",
         // Daqui para cima: painel no canto, acima do botão
         "sm:inset-auto sm:right-6 sm:bottom-24 sm:h-[min(600px,calc(100dvh-140px))] sm:w-[400px]",
       )}
@@ -142,7 +142,7 @@ function ChatPanel({ onClose }: { onClose: () => void }) {
           onClick={() => close()}
           aria-label="Abrir a aba Assistente"
           title="Abrir a aba Assistente"
-          className="grid size-11 place-items-center rounded-chip text-muted transition-colors duration-[var(--dur-fast)] hover:bg-surface-2 hover:text-foreground sm:size-9 [&_svg]:size-4"
+          className="grid size-11 place-items-center rounded-chip text-muted transition-colors duration-[var(--dur-fast)] hover:bg-surface-2 hover:text-foreground sm:size-10 [&_svg]:size-4"
         >
           <Maximize2 />
         </Link>

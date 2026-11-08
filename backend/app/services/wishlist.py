@@ -3,8 +3,11 @@
 O link é lido como uma página comum, procurando, nesta ordem:
 1. JSON-LD schema.org/Product (preço em `offers`), que a maioria das lojas publica para o Google;
 2. OpenGraph (`og:title`, `og:image`, `product:price:amount`);
-3. `itemprop="price"`.
-Lojas que bloqueiam robôs (Amazon, às vezes) devolvem pouco ou nada: o usuário completa à mão.
+3. microdados (`itemprop` price, image e name) e `<link rel="image_src">`.
+Lojas que bloqueiam robôs (Mercado Livre manda para uma "verificação de conta", a Amazon às
+vezes) não entregam a página. Nesse caso o nome sai do próprio link (o trecho com hífens, como
+"barra-fixa-para-porta") e o link guardado continua o do produto, não o da verificação; preço e
+foto o usuário completa à mão. Não tentamos contornar o bloqueio.
 
 Como o servidor busca a URL que o usuário colou, ela não pode apontar para a rede local
 (roteador, a própria API): o host é resolvido e IPs privados ou de loopback são recusados,
@@ -57,6 +60,9 @@ class _PageParser(HTMLParser):
         self.meta: dict[str, str] = {}
         self.json_ld: list[str] = []
         self.itemprop_price: str | None = None
+        self.itemprop_image: str | None = None
+        self.itemprop_name: str | None = None
+        self.link_image: str | None = None
         self.title = ""
         self._in_ld = False
         self._in_title = False
@@ -68,8 +74,15 @@ class _PageParser(HTMLParser):
             key = (a.get("property") or a.get("name") or a.get("itemprop") or "").lower()
             if key and "content" in a:
                 self.meta.setdefault(key, a["content"].strip())
-        if a.get("itemprop") == "price" and self.itemprop_price is None:
+        prop = a.get("itemprop")
+        if prop == "price" and self.itemprop_price is None:
             self.itemprop_price = a.get("content") or None
+        elif prop == "image" and self.itemprop_image is None:
+            self.itemprop_image = a.get("content") or a.get("src") or a.get("href") or None
+        elif prop == "name" and tag == "meta" and self.itemprop_name is None:
+            self.itemprop_name = a.get("content") or None
+        if tag == "link" and "image_src" in a.get("rel", "").lower() and self.link_image is None:
+            self.link_image = a.get("href") or None
         if tag == "script" and a.get("type", "").lower() == "application/ld+json":
             self._in_ld, self._buffer = True, []
         elif tag == "title":
@@ -158,6 +171,32 @@ def _image(value: object) -> str | None:
     return str(value) if value else None
 
 
+# Páginas de bloqueio/verificação: não têm o produto, só o nome da loja no título
+_WALL_PATH = re.compile(
+    r"(account-verification|captcha|/challenge|validatecaptcha|/login|/signin)", re.I
+)
+_WALL_TITLE = re.compile(
+    r"(robot check|access denied|are you a human|verifica|captcha|just a moment)", re.I
+)
+# Palavras que ficam minúsculas no nome tirado do link ("Barra Fixa para Porta de Aço")
+_SMALL_WORDS = {"de", "da", "do", "das", "dos", "e", "para", "com", "em", "a", "o", "no", "na"}
+# Pedaços do link que não são nome: códigos ("MLB", "1234567") e sufixos ("_JM")
+_NOT_A_WORD = re.compile(r"(mlb|mla|ml|\d+|_.*)", re.I)
+
+
+def name_from_url(url: str) -> str | None:
+    """Nome legível a partir do trecho do link com hífens ("vittak-barra-fixa-para-porta")."""
+    segments = [seg for seg in urlsplit(url).path.split("/") if seg.count("-") >= 2]
+    if not segments:
+        return None
+    longest = max(segments, key=len)
+    words = [w for w in longest.split("-") if w and not _NOT_A_WORD.fullmatch(w)]
+    if len(words) < 2:
+        return None
+    titled = (w if i and w.lower() in _SMALL_WORDS else w.capitalize() for i, w in enumerate(words))
+    return " ".join(titled)[:255]
+
+
 def parse_product(html: str, url: str) -> dict:
     """Nome, preço, moeda, imagem e loja que a página informa (o que faltar vem None)."""
     page = _PageParser()
@@ -176,13 +215,31 @@ def parse_product(html: str, url: str) -> dict:
             break
 
     m = page.meta
-    name = name or m.get("og:title") or m.get("twitter:title") or page.title.strip() or None
+    name = (
+        name
+        or m.get("og:title")
+        or m.get("twitter:title")
+        or page.itemprop_name
+        or page.title.strip()
+        or None
+    )
     if price is None:
         price = parse_price(
-            m.get("product:price:amount") or m.get("og:price:amount") or page.itemprop_price
+            m.get("product:price:amount")
+            or m.get("og:price:amount")
+            or m.get("product:price")
+            or page.itemprop_price
         )
         currency = currency or m.get("product:price:currency") or m.get("og:price:currency")
-    image = image or m.get("og:image") or m.get("twitter:image")
+    image = (
+        image
+        or m.get("og:image:secure_url")
+        or m.get("og:image")
+        or m.get("twitter:image")
+        or m.get("twitter:image:src")
+        or page.itemprop_image
+        or page.link_image
+    )
     host = urlsplit(url).hostname or ""
     store = m.get("og:site_name") or host.removeprefix("www.") or None
     return {
@@ -216,8 +273,30 @@ def _check_url(url: str) -> None:
             raise ProductFetchError("Esse link aponta para a rede local")
 
 
+def _blocked(product: dict, html: str, final_url: str) -> bool:
+    """A loja mandou para uma página de verificação (sem preço nem foto do produto)."""
+    if product["price"] is not None or product["image_url"]:
+        return False
+    title = _PageParser()
+    title.feed(html[:20_000])
+    return bool(_WALL_PATH.search(urlsplit(final_url).path) or _WALL_TITLE.search(title.title))
+
+
+def _from_link_only(url: str) -> dict:
+    """O que dá para saber só pelo link que a pessoa colou: nome pelo trecho com hífens e a loja."""
+    host = (urlsplit(url).hostname or "").removeprefix("www.")
+    return {
+        "url": url,
+        "name": name_from_url(url),
+        "price": None,
+        "currency": "BRL",
+        "image_url": None,
+        "store": host[:100] or None,
+    }
+
+
 def fetch_product(url: str, http: httpx.Client | None = None) -> dict:
-    url = url.strip()
+    url = original = url.strip()
     client = http or httpx.Client(timeout=10, headers=_HEADERS)
     try:
         for _ in range(MAX_REDIRECTS + 1):
@@ -234,7 +313,13 @@ def fetch_product(url: str, http: httpx.Client | None = None) -> dict:
                     if len(body) > MAX_BYTES:
                         break
                 html = body[:MAX_BYTES].decode(resp.encoding or "utf-8", errors="replace")
-                return parse_product(html, url)
+                product = parse_product(html, url)
+                if _blocked(product, html, url):
+                    return _from_link_only(original)
+                # Sem nome na página (ou só o da loja): tenta pelo link
+                if not product["name"] or product["name"] == product["store"]:
+                    product["name"] = name_from_url(original) or product["name"]
+                return product
         raise ProductFetchError("Redirecionamentos demais")
     except httpx.HTTPError:
         raise ProductFetchError("Não consegui abrir o link") from None

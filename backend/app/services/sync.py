@@ -16,6 +16,8 @@ Janela: 12 meses no primeiro sync; depois, desde o último sync menos 30 dias
 
 import logging
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -423,6 +425,17 @@ class SyncState:
 
 state = SyncState()
 _lock = threading.Lock()
+
+
+@contextmanager
+def exclusive(timeout: float = 120) -> Iterator[None]:
+    """Segura o sync enquanto algo troca o banco inteiro (importar dados)."""
+    if not _lock.acquire(timeout=timeout):
+        raise TimeoutError("Uma sincronização está demorando; tente de novo em instantes")
+    try:
+        yield
+    finally:
+        _lock.release()
 
 
 def run_sync(session_factory, connection_ids: list[int] | None = None) -> bool:

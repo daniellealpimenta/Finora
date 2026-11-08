@@ -5,7 +5,6 @@ Windows, WebKit no macOS). No modo web (uvicorn + npm run dev) este arquivo não
 """
 
 import logging
-import shutil
 import sys
 import threading
 import time
@@ -53,31 +52,10 @@ def _is_running() -> bool:
 
 
 def _migrate() -> None:
-    """Atualiza o banco sozinho (no modo web é o `alembic upgrade head` manual).
-    Antes de mexer, guarda uma cópia do banco."""
-    from alembic import command
-    from alembic.config import Config
-    from alembic.runtime.migration import MigrationContext
-    from alembic.script import ScriptDirectory
-    from sqlalchemy.engine import make_url
+    """Atualiza o banco sozinho (no modo web é o `alembic upgrade head` manual)."""
+    from app.db import migrate
 
-    from app.db.session import engine
-    from app.main import _BACKEND_DIR
-
-    # Config sem arquivo: o fileConfig do alembic.ini desligaria os loggers da aplicação
-    cfg = Config()
-    cfg.set_main_option("script_location", str(_BACKEND_DIR / "migrations"))
-    heads = set(ScriptDirectory.from_config(cfg).get_heads())
-    with engine.connect() as conn:
-        current = set(MigrationContext.configure(conn).get_current_heads())
-    if current == heads:
-        return
-
-    database = make_url(str(engine.url)).database
-    if current and database and Path(database).is_file():
-        shutil.copy2(database, f"{database}.bak")
-        logger.info("Backup do banco em %s.bak", database)
-    command.upgrade(cfg, "head")
+    migrate.upgrade()
 
 
 def _start_server():
@@ -122,7 +100,9 @@ def main() -> None:
             sys.exit(1)
 
     webview.create_window("Finora", URL, width=1400, height=900, min_size=(1024, 680))
-    webview.start()
+    # Sem modo privado: o que a interface guarda (tema, som, fechamento visto) sobrevive a fechar o
+    # programa. O padrão do pywebview é privado e apagava tudo a cada abertura
+    webview.start(private_mode=False, storage_path=str(DATA_DIR / "webview"))
 
     if server:
         server.should_exit = True  # o lifespan para o scheduler de sync

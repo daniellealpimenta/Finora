@@ -14,7 +14,6 @@ import {
   Repeat,
   Shield,
   Store,
-  Table,
   Wallet,
 } from "lucide-react";
 import Link from "next/link";
@@ -25,6 +24,7 @@ import { InfoTip } from "@/components/info-tip";
 import {
   CASHFLOW_SERIES,
   CashflowChart,
+  CashflowLines,
   CommitmentsChart,
   DAILY_SERIES,
   DailyChart,
@@ -52,6 +52,7 @@ import type { Category, Installment, SavingsPot } from "@/lib/api";
 import { cycleName, cycleRange } from "@/lib/cycle";
 import { earnedText, money, outflow, monthLabel, percent, shiftMonth, shortDate } from "@/lib/format";
 import { wiggle } from "@/lib/motion";
+import { DataTable, Donut, Rings, useCardView, ViewFade, ViewSwitch } from "./views";
 import {
   INFO_CASHFLOW,
   INFO_CATEGORIES,
@@ -362,56 +363,48 @@ export function FixedCard({
 }
 
 export function CashflowCard({ data, selected }: { data: CashflowPoint[]; selected: string }) {
-  const [table, setTable] = useState(false);
+  const [view, setView] = useCardView("cashflow", ["bars", "line", "table"] as const);
   return (
     <Card data-enter>
       <CardTitle
         icon={ChartColumn}
         color="var(--cat-home)"
         info={INFO_CASHFLOW}
-        hint={
-          <Button variant="ghost" className="min-h-8 px-2.5 text-xs" onClick={() => setTable(!table)}>
-            {table ? <ChartColumn /> : <Table />}
-            {table ? "Ver gráfico" : "Ver tabela"}
-          </Button>
-        }
+        hint={<ViewSwitch options={["bars", "line", "table"] as const} value={view} onChange={setView} />}
       >
         Receitas e despesas
       </CardTitle>
-      {table ? (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm tabular">
-            <thead className="text-left text-xs text-muted">
-              <tr>
-                <th className="py-1.5 font-medium">Ciclo</th>
-                <th className="py-1.5 text-right font-medium">Receitas</th>
-                <th className="py-1.5 text-right font-medium">Despesas</th>
-                <th className="py-1.5 text-right font-medium">Diferença</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {data.map((d) => (
-                <tr key={d.month} className={cx(d.month === selected && "font-semibold")}>
-                  <td className="py-2">{monthLabel(d.month)}</td>
-                  <td className="py-2 text-right">{money(d.income)}</td>
-                  <td className="py-2 text-right">{money(d.expense)}</td>
-                  <td className={cx("py-2 text-right", d.net < 0 ? "text-negative" : "text-positive")}>
-                    {money(d.net)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <Legend series={CASHFLOW_SERIES} />
-            <span className="text-xs text-muted">últimos 12 ciclos</span>
-          </div>
-          <CashflowChart data={data} selected={selected} />
-        </>
-      )}
+      <ViewFade view={view}>
+        {view === "table" ? (
+          <DataTable
+            head={["Ciclo", "Receitas", "Despesas", "Diferença"]}
+            rows={data.map((d) => ({
+              key: d.month,
+              strong: d.month === selected,
+              cells: [
+                monthLabel(d.month),
+                money(d.income),
+                money(d.expense),
+                <span key="n" className={d.net < 0 ? "text-negative" : "text-positive"}>
+                  {money(d.net)}
+                </span>,
+              ],
+            }))}
+          />
+        ) : (
+          <>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <Legend series={CASHFLOW_SERIES} />
+              <span className="text-xs text-muted">últimos 12 ciclos</span>
+            </div>
+            {view === "line" ? (
+              <CashflowLines data={data} selected={selected} />
+            ) : (
+              <CashflowChart data={data} selected={selected} />
+            )}
+          </>
+        )}
+      </ViewFade>
     </Card>
   );
 }
@@ -420,6 +413,7 @@ const CATEGORY_PREVIEW = 6;
 
 export function CategoriesCard({ rows, keyById }: { rows: CategoryRow[]; keyById: Map<number, Category> }) {
   const [all, setAll] = useState(false);
+  const [view, setView] = useCardView("categories", ["donut", "list", "table"] as const);
   const visible = rows.filter((r) => r.spent > 0 || r.budget);
   const shown = all ? visible : visible.slice(0, CATEGORY_PREVIEW);
   const max = Math.max(1, ...visible.map((r) => Math.max(r.spent, r.budget ?? 0, r.average)));
@@ -428,7 +422,7 @@ export function CategoriesCard({ rows, keyById }: { rows: CategoryRow[]; keyById
       <CardTitle
         icon={Wallet}
         color="var(--cat-food)"
-        hint="traço = média dos 3 ciclos anteriores"
+        hint={<ViewSwitch options={["donut", "list", "table"] as const} value={view} onChange={setView} />}
         info={INFO_CATEGORIES}
       >
         Para onde foi o dinheiro
@@ -437,8 +431,43 @@ export function CategoriesCard({ rows, keyById }: { rows: CategoryRow[]; keyById
         <Empty icon={Wallet} color="var(--cat-food)">
           Sem gastos neste ciclo.
         </Empty>
+      ) : view === "donut" ? (
+        <ViewFade view={view}>
+          <Donut
+            caption="gasto no ciclo"
+            slices={visible
+              .filter((r) => r.spent > 0)
+              .map((r) => {
+                const cat = r.category_id ? keyById.get(r.category_id) : undefined;
+                return {
+                  key: String(r.category_id ?? "none"),
+                  label: r.category_name,
+                  value: r.spent,
+                  color: categoryStyle(cat?.key, cat?.kind ?? "EXPENSE").color,
+                };
+              })}
+          />
+        </ViewFade>
+      ) : view === "table" ? (
+        <ViewFade view={view}>
+          <DataTable
+            head={["Categoria", "Gasto", "Orçamento", "Média"]}
+            rows={visible.map((r) => ({
+              key: String(r.category_id ?? "none"),
+              cells: [
+                r.category_name,
+                <span key="s" className={r.budget !== null && r.spent > r.budget ? "text-negative" : undefined}>
+                  {money(r.spent)}
+                </span>,
+                r.budget === null ? "—" : money(r.budget),
+                money(r.average),
+              ],
+            }))}
+          />
+        </ViewFade>
       ) : (
         <>
+          <p className="-mt-2 mb-3 text-xs text-muted">traço = média dos 3 ciclos anteriores</p>
           <ul className="grid divide-y divide-border">
             {shown.map((r) => {
               const cat = r.category_id ? keyById.get(r.category_id) : undefined;
@@ -603,6 +632,11 @@ export function HeroCard({ data, keyById }: { data: Data; keyById: Map<number, C
     <Card data-enter className="relative isolate grid gap-6 overflow-hidden md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
       {/* O padrão das cédulas atrás do número; só neste card e no login */}
       <Guilloche className="-z-10" x={0.3} y={0.2} />
+      {/* Brilho de latão atrás do número (opção Doca) */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -bottom-1/2 -left-[15%] -z-10 aspect-square w-[60%] rounded-full bg-[radial-gradient(circle,color-mix(in_oklab,var(--accent)_20%,transparent),transparent_65%)]"
+      />
       <div className="grid content-start gap-3">
         <p className="label flex items-center gap-1">
           {isCurrent ? "Livre agora" : `Terminou o ciclo de ${name} com`}
@@ -953,8 +987,15 @@ export function SavingsCard({
   month: string;
 }) {
   const total = pots.reduce((sum, p) => sum + Number(p.balance), 0) + looseTotal;
+  // Banco repetindo o mesmo saldo (Open Finance parado): soma o que cada cofrinho deve ter hoje
+  const frozen = pots.filter((p) => p.estimated_balance && p.frozen_since);
+  const estimated = frozen.length
+    ? total + frozen.reduce((sum, p) => sum + Number(p.estimated_balance) - Number(p.balance), 0)
+    : null;
+  const frozenSince = frozen.map((p) => p.frozen_since!).sort()[0];
   const reached = pots.find((p) => p.goal_amount && Number(p.balance) >= Number(p.goal_amount));
   const shown = pots.slice(0, LIST_PREVIEW);
+  const [view, setView] = useCardView("savings", ["rings", "list"] as const);
 
   return (
     <Card data-enter className="grid content-start gap-4">
@@ -963,9 +1004,12 @@ export function SavingsCard({
         color="var(--cat-care)"
         info={INFO_SAVINGS}
         hint={
-          <Link href="/cofrinhos" className="rounded-chip px-2 py-1 text-xs font-semibold text-accent hover:bg-surface-2">
-            Organizar
-          </Link>
+          <span className="flex items-center gap-2">
+            <Link href="/cofrinhos" className="rounded-chip px-2 py-1 text-xs font-semibold text-accent hover:bg-surface-2">
+              Organizar
+            </Link>
+            <ViewSwitch options={["rings", "list"] as const} value={view} onChange={setView} />
+          </span>
         }
       >
         Cofrinhos
@@ -980,6 +1024,12 @@ export function SavingsCard({
         <>
           <div className="grid gap-0.5">
             <p className="text-[28px] leading-tight font-display font-normal tracking-[-0.02em] tabular">{money(total)}</p>
+            {estimated !== null && (
+              <p className="text-xs text-muted">
+                <span className="font-semibold text-positive tabular">≈ {money(estimated)} hoje (estimado).</span> O banco
+                repete o mesmo saldo desde {shortDate(frozenSince)}; a estimativa usa o rendimento médio de cada cofrinho.
+              </p>
+            )}
             {Math.abs(saved) >= 0.01 && (
               <p className={cx("text-xs font-semibold tabular", saved > 0 ? "text-positive" : "text-muted")}>
                 {saved > 0
@@ -988,6 +1038,20 @@ export function SavingsCard({
               </p>
             )}
           </div>
+          {view === "rings" ? (
+            <ViewFade view={view}>
+              <Rings
+                items={shown.map((p, i) => ({
+                  key: String(p.id),
+                  label: p.name,
+                  value: Number(p.balance),
+                  goal: p.goal_amount ? Number(p.goal_amount) : null,
+                  color: ["var(--cat-care)", "var(--cat-home)", "var(--cat-move)", "var(--cat-fun)", "var(--cat-shop)", "var(--cat-food)"][i % 6],
+                  note: p.goal_amount ? `${money(Number(p.balance))} de ${money(Number(p.goal_amount))}` : money(Number(p.balance)),
+                }))}
+              />
+            </ViewFade>
+          ) : (
           <ul className="grid divide-y divide-border">
             {shown.map((p) => {
               const balance = Number(p.balance);
@@ -1022,6 +1086,7 @@ export function SavingsCard({
               );
             })}
           </ul>
+          )}
           {pots.length > LIST_PREVIEW && (
             <Link href="/cofrinhos" className="text-sm font-semibold text-accent">
               Ver todos os {pots.length} cofrinhos
@@ -1137,6 +1202,7 @@ export function InstallmentsCard({ items, keyById }: { items: Installment[]; key
  * números vêm primeiro (é a resposta); o gráfico mostra o caminho até eles.
  */
 export function PaceCard({ data }: { data: Data }) {
+  const [view, setView] = useCardView("pace", ["line", "table"] as const);
   const s = data.summary;
   const points = data.daily;
   const filled = points.filter((p) => p.current !== null);
@@ -1187,40 +1253,94 @@ export function PaceCard({ data }: { data: Data }) {
           </span>
         </p>
       )}
-      <div className="mb-2">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <Legend series={DAILY_SERIES} />
+        <ViewSwitch options={["line", "table"] as const} value={view} onChange={setView} />
       </div>
-      <DailyChart data={points} today={isCurrent ? day : undefined} />
+      <ViewFade view={view}>
+        {view === "table" ? (
+          <DataTable
+            head={["Dia", "Este ciclo", "Ciclo anterior"]}
+            rows={points
+              .filter((p) => p.day === 1 || p.day % 5 === 0 || p.day === day || p.day === points.length)
+              .map((p) => ({
+                key: String(p.day),
+                strong: isCurrent && p.day === day,
+                cells: [
+                  `dia ${p.day}${p.label ? ` (${p.label})` : ""}`,
+                  p.current === null ? "—" : money(p.current),
+                  p.previous === null ? "—" : money(p.previous),
+                ],
+              }))}
+          />
+        ) : (
+          <DailyChart data={points} today={isCurrent ? day : undefined} />
+        )}
+      </ViewFade>
     </Card>
   );
 }
 
 export function CommitmentsCard({ data }: { data: Data }) {
+  const [view, setView] = useCardView("commitments", ["bars", "table"] as const);
   if (!data.commitments.some((c) => c.amount > 0)) return null;
   return (
     <Card data-enter>
       <CardTitle
         icon={CalendarClock}
         color="var(--cat-care)"
-        hint="compras parceladas já feitas"
+        hint={<ViewSwitch options={["bars", "table"] as const} value={view} onChange={setView} />}
         info={INFO_COMMITMENTS}
       >
         Compromissos futuros
       </CardTitle>
-      <div className="mb-3">
-        <Legend series={[{ key: "amount", label: "Parcelas por ciclo", color: "var(--cat-move)" }]} />
-      </div>
-      <CommitmentsChart data={data.commitments} />
+      <ViewFade view={view}>
+        {view === "table" ? (
+          <DataTable
+            head={["Ciclo", "Parcelas"]}
+            rows={data.commitments.filter((c) => c.amount > 0).map((c) => ({ key: c.month, cells: [monthLabel(c.month), money(c.amount)] }))}
+          />
+        ) : (
+          <>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <Legend series={[{ key: "amount", label: "Parcelas por ciclo", color: "var(--cat-move)" }]} />
+              <span className="text-xs text-muted">compras parceladas já feitas</span>
+            </div>
+            <CommitmentsChart data={data.commitments} />
+          </>
+        )}
+      </ViewFade>
     </Card>
   );
 }
 
+const MERCHANT_COLORS = ["var(--cat-shop)", "var(--cat-food)", "var(--cat-home)", "var(--cat-move)", "var(--cat-care)", "var(--cat-fun)"];
+
 export function MerchantsCard({ data }: { data: Data }) {
+  const [view, setView] = useCardView("merchants", ["list", "donut"] as const);
   return (
     <Card data-enter>
-      <CardTitle icon={Store} color="var(--cat-shop)" hint={`ciclo de ${cycleName(data.month)}`} info={INFO_MERCHANTS}>
+      <CardTitle
+        icon={Store}
+        color="var(--cat-shop)"
+        hint={<ViewSwitch options={["list", "donut"] as const} value={view} onChange={setView} />}
+        info={INFO_MERCHANTS}
+      >
         Onde você mais gastou
       </CardTitle>
+      {view === "donut" && data.merchants.length > 0 ? (
+        <ViewFade view={view}>
+          <Donut
+            caption={`ciclo de ${cycleName(data.month)}`}
+            slices={data.merchants.slice(0, 6).map((m, i) => ({
+              key: m.name,
+              label: m.name,
+              value: m.total,
+              color: MERCHANT_COLORS[i % MERCHANT_COLORS.length],
+            }))}
+          />
+        </ViewFade>
+      ) : (
       <ListRows
         empty={
           <Empty icon={Store} color="var(--cat-shop)">
@@ -1237,22 +1357,35 @@ export function MerchantsCard({ data }: { data: Data }) {
           bar: m.total / Math.max(...data.merchants.map((x) => x.total)),
         }))}
       />
+      )}
     </Card>
   );
 }
 
 export function RecurringCard({ data }: { data: Data }) {
+  const [view, setView] = useCardView("recurring", ["list", "table"] as const);
   const byName = new Map(data.catalog.map((c) => [c.name, c]));
   return (
     <Card data-enter>
       <CardTitle
         icon={Repeat}
         color="var(--cat-fun)"
-        hint="detectados nos últimos 6 ciclos"
+        hint={<ViewSwitch options={["list", "table"] as const} value={view} onChange={setView} />}
         info={INFO_RECURRING}
       >
         Assinaturas e gastos fixos
       </CardTitle>
+      {view === "table" && data.recurring.length > 0 ? (
+        <ViewFade view={view}>
+          <DataTable
+            head={["Gasto", "Por mês", "Por ano"]}
+            rows={data.recurring.map((r, i) => ({
+              key: `${r.name}-${i}`,
+              cells: [r.name, money(r.monthly_amount), money(r.annual_amount)],
+            }))}
+          />
+        </ViewFade>
+      ) : (
       <ListRows
         empty={
           <Empty icon={Repeat} color="var(--cat-fun)">
@@ -1272,6 +1405,7 @@ export function RecurringCard({ data }: { data: Data }) {
           };
         })}
       />
+      )}
     </Card>
   );
 }

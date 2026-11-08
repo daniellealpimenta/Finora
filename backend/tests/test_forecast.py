@@ -144,9 +144,7 @@ def test_default_goal_keeps_20_percent_and_bills_before_next_income(db):
     fixed = {x["name"]: x for x in f["fixed"]}
     assert set(fixed) == {"NETFLIX", "IGREJA"}
     assert fixed["NETFLIX"]["expected_date"] == date(2026, 10, 3)
-    assert f["spendable"] == (
-        f["available_now"] + f["income_left"] - s["left"] - f["fixed_left"]
-    )
+    assert f["spendable"] == (f["available_now"] + f["income_left"] - s["left"] - f["fixed_left"])
     # Próxima entrada: o Pix de dia 6; antes dele vence só a Netflix (dia 3)
     u = f["until_income"]
     assert (u["label"], u["date"], u["days"]) == ("PIX recebido", date(2026, 10, 6), 4)

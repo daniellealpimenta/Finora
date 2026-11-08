@@ -5,16 +5,20 @@ boas-vindas. Só funciona enquanto o banco não tem nenhum usuário; depois diss
 trocar qualquer coisa passa pelo login (e o Perfil pede a senha atual).
 """
 
-from fastapi import APIRouter, HTTPException, status
+from typing import Annotated
+
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select
 
 from app.api.deps import DbSession
 from app.api.routes.auth import TokenResponse, remember_login
+from app.api.routes.backup import BackupInfo, info_out, read_upload
 from app.core import usernames
 from app.core.config import get_settings
 from app.core.security import create_access_token, hash_password
 from app.db.models import User
+from app.services import backup
 
 router = APIRouter(prefix="/setup", tags=["setup"])
 
@@ -65,3 +69,20 @@ def create_first_user(body: SetupIn, db: DbSession) -> TokenResponse:
     remember_login(db, user.email)
     # Já entra: a próxima tela do onboarding (Pluggy) usa o Perfil, que pede login
     return TokenResponse(access_token=create_access_token(str(user.id)))
+
+
+@router.post("/import", response_model=BackupInfo)
+async def import_first(
+    db: DbSession, file: Annotated[UploadFile, File()], password: Annotated[str, Form()]
+) -> BackupInfo:
+    """Primeira abertura num computador novo: traz os dados de outro em vez de criar conta.
+
+    Sem login, como o resto do /setup, e só enquanto não há usuário. Depois, entra com a conta
+    que veio no arquivo."""
+    if _has_user(db):
+        raise HTTPException(status.HTTP_409_CONFLICT, "O Finora já tem um usuário: faça login")
+    db.close()  # a sessão não pode segurar o banco que vai ser trocado
+    try:
+        return info_out(backup.restore(await read_upload(file), password))
+    except backup.BackupError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from None

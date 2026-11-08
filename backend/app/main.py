@@ -15,12 +15,14 @@ from fastapi.staticfiles import StaticFiles
 from app.api.routes import (
     assistant,
     auth,
+    backup,
     cards,
     connections,
     dashboard,
     imports,
     needs,
     notifications,
+    panel,
     pluggy,
     profile,
     savings,
@@ -113,6 +115,8 @@ def create_app() -> FastAPI:
     app.include_router(profile.router)
     app.include_router(notifications.router)
     app.include_router(updates.router)
+    app.include_router(panel.router)
+    app.include_router(backup.router)
 
     # Por último: as rotas da API têm prioridade sobre os arquivos do frontend
     frontend = _frontend_dir()

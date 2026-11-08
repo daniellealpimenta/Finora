@@ -421,6 +421,14 @@ function PotCard({
           <p data-balance className="origin-right text-[28px] leading-tight font-display font-normal tracking-[-0.02em] tabular">
             {money(balance)}
           </p>
+          {pot.estimated_balance && pot.frozen_since && (
+            <p
+              className="text-right text-xs font-semibold text-positive tabular"
+              title={`O banco repete o mesmo saldo desde ${shortDate(pot.frozen_since)}. A estimativa usa o rendimento médio por dia útil deste cofrinho.`}
+            >
+              ≈ {money(pot.estimated_balance)} hoje (estimado)
+            </p>
+          )}
         </div>
         <IconButton label={`Apagar ${pot.name}`} onClick={onRemove}>
           <Trash2 />

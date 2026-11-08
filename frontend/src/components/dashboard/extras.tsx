@@ -401,7 +401,10 @@ export function CategoryTilesCard({ rows, keyById, month }: { rows: CategoryRow[
   const root = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState<CategoryRow | null>(null);
   const [items, setItems] = useState<Transaction[] | null>(null);
-  const flipState = useRef<{ state: Flip.FlipState; id: string } | null>(null);
+  const flipState = useRef<Flip.FlipState | null>(null);
+  const detail = useRef<HTMLDivElement>(null);
+  const veil = useRef<HTMLDivElement>(null);
+  const closing = useRef(false);
   const tiles = rows.filter((r) => r.spent > 0).slice(0, TILES);
 
   useGSAP(
@@ -418,37 +421,56 @@ export function CategoryTilesCard({ rows, keyById, month }: { rows: CategoryRow[
   );
 
   const flipId = (r: CategoryRow) => `cat-${r.category_id ?? "none"}`;
-  const capture = (r: CategoryRow) => {
-    flipState.current = { state: Flip.getState(`[data-flip-id="${flipId(r)}"]`), id: flipId(r) };
-  };
+  // O bloco de dentro do ladrilho: tem o mesmo data-flip-id da janela, que é como o Flip os pareia
+  const tileEl = (r: CategoryRow) =>
+    root.current?.querySelector<HTMLElement>(`[data-tile-id="${flipId(r)}"] [data-flip-id]`) ?? null;
 
   const show = (r: CategoryRow) => {
-    capture(r);
+    if (open || closing.current) return;
+    const from = tileEl(r);
+    flipState.current = from ? Flip.getState(from) : null;
     setItems(null);
     setOpen(r);
     api<{ items: Transaction[] }>(`/transactions${qs({ month, category_id: r.category_id ?? undefined, page_size: 8 })}`)
       .then((p) => setItems(p.items))
       .catch(() => setItems([]));
   };
+
+  // Fechar é o caminho de volta: o conteúdo some, a janela encolhe até o ladrilho e só então sai
   const hide = () => {
-    if (!open) return;
-    capture(open);
-    setOpen(null);
+    if (!open || closing.current) return;
+    const to = tileEl(open);
+    if (prefersReducedMotion() || !detail.current || !to) return setOpen(null);
+    closing.current = true;
+    gsap
+      .timeline({
+        onComplete: () => {
+          closing.current = false;
+          setOpen(null);
+        },
+      })
+      .to(detail.current.querySelectorAll("[data-detail-content]"), { autoAlpha: 0, duration: 0.15 })
+      .add(Flip.fit(detail.current, to, { scale: true, duration: 0.45, ease: "power3.inOut" }) as gsap.core.Tween)
+      .to(veil.current, { autoAlpha: 0, duration: 0.35 }, "<");
   };
 
-  // Depois de cada troca, o Flip anima do retrato tirado antes para o lugar novo
+  // Abrir: a janela nasce do ladrilho só com transform (escala, sem refazer o layout a cada quadro),
+  // e o conteúdo aparece depois que ela chega ao tamanho final. Assim nada pula no caminho
   useLayoutEffect(() => {
-    const snap = flipState.current;
+    const state = flipState.current;
     flipState.current = null;
-    if (!snap || prefersReducedMotion()) return;
-    // O ladrilho e o detalhe são elementos diferentes com o mesmo data-flip-id
-    Flip.from(snap.state, {
-      targets: `[data-flip-id="${snap.id}"]`,
-      duration: 0.6,
+    if (!open || !state || !detail.current || prefersReducedMotion()) return;
+    const content = detail.current.querySelectorAll("[data-detail-content]");
+    gsap.set(content, { autoAlpha: 0 });
+    gsap.fromTo(veil.current, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.35 });
+    Flip.from(state, {
+      targets: detail.current,
+      scale: true,
+      duration: 0.5,
       ease: "power3.inOut",
-      scale: false,
-      absolute: true,
-      zIndex: 70,
+      onComplete: () => {
+        gsap.to(content, { autoAlpha: 1, y: 0, duration: 0.3, ease: "power3.out", stagger: 0.04 });
+      },
     });
   }, [open]);
 
@@ -473,6 +495,7 @@ export function CategoryTilesCard({ rows, keyById, month }: { rows: CategoryRow[
     const share = r.budget ? r.spent / r.budget : null;
     return (
       <div
+        ref={expanded ? detail : undefined}
         data-flip-id={flipId(r)}
         className={
           expanded
@@ -491,21 +514,25 @@ export function CategoryTilesCard({ rows, keyById, month }: { rows: CategoryRow[
             </IconButton>
           )}
         </div>
-        <p className={expanded ? "font-display text-[48px] leading-none tracking-[-0.02em] tabular" : "font-display text-[26px] leading-none tabular"}>
+        <p
+          data-detail-content={expanded || undefined}
+          className={expanded ? "font-display text-[48px] leading-none tracking-[-0.02em] tabular" : "font-display text-[26px] leading-none tabular"}
+        >
           {money(r.spent)}
         </p>
-        <span className="h-1.5 overflow-hidden rounded-full bg-background">
+        <span data-detail-content={expanded || undefined} className="h-1.5 overflow-hidden rounded-full bg-background">
           <span
             data-tile-bar={expanded ? undefined : true}
             className="block h-full rounded-full"
             style={{ width: `${Math.min(100, (share ?? r.spent / Math.max(r.spent, r.average || r.spent)) * 100)}%`, background: share && share > 1 ? "var(--negative)" : color }}
           />
         </span>
-        <span className="text-xs text-muted">
+        <span data-detail-content={expanded || undefined} className="text-xs text-muted">
           {r.budget ? `${Math.round((share ?? 0) * 100)}% do limite de ${money(r.budget)}` : r.average > 0 ? `média ${money(r.average)}` : "sem média ainda"}
         </span>
         {expanded && (
-          <div className="grid">
+          // Altura reservada: as transações chegam no meio da animação e não podem mudar o tamanho
+          <div data-detail-content className="grid min-h-[18rem] content-start">
             {items === null ? (
               <div className="grid place-items-center py-6">
                 <Pila mood="neutral" size={64} />
@@ -540,13 +567,16 @@ export function CategoryTilesCard({ rows, keyById, month }: { rows: CategoryRow[
             <button
               key={flipId(r)}
               data-tile
+              data-tile-id={flipId(r)}
               type="button"
               onClick={() => show(r)}
               aria-label={`Abrir ${r.category_name}`}
               className="grid rounded-card text-left"
+              // O ladrilho continua no lugar (invisível) enquanto aberto: a janela volta para ele
+              // ao fechar, sem a grade mudar de tamanho
               style={{ visibility: open && flipId(open) === flipId(r) ? "hidden" : undefined }}
             >
-              {open && flipId(open) === flipId(r) ? <div className="h-full" /> : tile(r, false)}
+              {tile(r, false)}
             </button>
           ))}
         </div>
@@ -554,7 +584,7 @@ export function CategoryTilesCard({ rows, keyById, month }: { rows: CategoryRow[
       {open &&
         createPortal(
           <div className="fixed inset-0 z-50 grid place-items-center px-4 py-6" role="dialog" aria-modal="true" aria-label={open.category_name}>
-            <div className="absolute inset-0 bg-black/45" onClick={hide} aria-hidden />
+            <div ref={veil} className="absolute inset-0 bg-black/45" onClick={hide} aria-hidden />
             {tile(open, true)}
           </div>,
           document.body,

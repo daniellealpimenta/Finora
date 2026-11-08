@@ -4,12 +4,14 @@ from decimal import Decimal
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbSession
-from app.db.models import Account, AccountType, Connection
+from app.db.models import Account, AccountType, Connection, Transaction
 from app.db.session import SessionLocal
 from app.integrations.pluggy.client import PluggyClient, PluggyError
+from app.services.cards import bank_name
 from app.services.sync import SyncResult, run_sync, state
 
 logger = logging.getLogger(__name__)
@@ -29,6 +31,10 @@ class AccountOut(BaseModel):
     bill_close_date: date | None
     # Cartão: dia de fechamento escolhido pelo usuário (null = estimado pelas faturas)
     closing_day: int | None
+    # Transação mais recente que chegou: mostra quando o banco parou de mandar dados
+    last_transaction_date: date | None = None
+    # Banco em poucas letras ("Nubank"): pelo MeuPluggy a conexão se chama sempre "MeuPluggy"
+    bank: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -63,7 +69,18 @@ class SyncStatus(BaseModel):
 
 @router.get("/connections", response_model=list[ConnectionOut])
 def list_connections(_: CurrentUser, db: DbSession) -> list[Connection]:
-    return list(db.scalars(select(Connection).order_by(Connection.id)))
+    # Contas (e a conexão de cada uma, usada por bank_name) numa consulta só, sem N+1
+    query = select(Connection).options(
+        selectinload(Connection.accounts).joinedload(Account.connection)
+    )
+    connections = list(db.scalars(query.order_by(Connection.id)))
+    newest = select(Transaction.account_id, func.max(Transaction.date))
+    latest = dict(db.execute(newest.group_by(Transaction.account_id)).all())
+    accounts = [a for c in connections for a in c.accounts]
+    for account in accounts:
+        account.last_transaction_date = latest.get(account.id)
+        account.bank = bank_name(account, accounts)
+    return connections
 
 
 @router.post("/connections", response_model=ConnectionOut, status_code=status.HTTP_201_CREATED)

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { NotificationsCard } from "@/components/profile/notifications";
+import { TransferCard } from "@/components/profile/transfer";
 import { Field, FormDialog } from "@/components/profile/form";
 import { MASCOTS, Pila, useMascot, type MascotId } from "@/components/pila";
 import {
@@ -238,6 +239,14 @@ export default function PerfilPage() {
               </div>
             </dl>
           </Card>
+
+          <TransferCard
+            onImported={(info) => {
+              // Os dados (e a conta) agora são os do arquivo: entra de novo com a conta de lá
+              setToken(null);
+              router.replace(`/login?importado=${encodeURIComponent(info.device)}`);
+            }}
+          />
         </div>
       )}
 

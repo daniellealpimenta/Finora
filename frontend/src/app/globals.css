@@ -4,15 +4,19 @@
    2026-10-27: mais contraste e cor); o escuro vale pelo sistema (prefers-color-scheme) ou pela
    escolha manual (data-theme em <html>). */
 :root {
-  --background: #d3dae2;
-  --foreground: #0a1016;
+  /* Claro revisto em 2026-11-07: fundo quase branco e frio no lugar do cinza-azulado pesado,
+     cards brancos com contorno suave e linhas leves; o texto suave segue acima de 7:1 */
+  --background: #eef1f5;
+  --foreground: #111827;
   --surface: #ffffff;
-  --surface-2: #e4e9ef;
-  --border: #b4c0cc;
-  --grid: #d6dde4;
-  --muted: #3b4754;
+  --surface-2: #f1f4f8;
+  --border: #d9dfe7;
+  --grid: #e7ebf0;
+  --muted: #4b5563;
   --accent: #8a5300;
   --accent-fg: #ffffff;
+  /* Par do latão nos degradês (gráfico de ritmo, brilhos): violeta, só em detalhe */
+  --accent-2: #6436e0;
   --positive: #00745b;
   --negative: #c1311a;
   --warning: #9a5000;
@@ -26,7 +30,7 @@
   --cat-shop: #4a7300;
   --cat-fin: #4a5868;
   /* Contorno dos cards e força do tingido: o claro precisa de mais, o escuro de nada */
-  --card-edge: #b9c5d0;
+  --card-edge: #e1e6ed;
   --tint: 22%;
 
   /* Pila, o mascote: ilustração, igual nos dois temas */
@@ -39,9 +43,17 @@
   --coin: #d2ac6a;
   --coin-line: #6b5221;
 
-  --r-chip: 8px;
-  --r-control: 10px;
-  --r-card: 14px;
+  /* Atalhos da Visão geral: pastel com tinta escura, iguais nos dois temas (como o Pila) */
+  --tile-gold: #e8cf8f;
+  --tile-blue: #a9c7d8;
+  --tile-violet: #c3b2f0;
+  --tile-pink: #f2b8cf;
+  --tile-ink: #1d1a16;
+
+  /* Cantos "suaves" (opção Doca, 2026-11-06) */
+  --r-chip: 10px;
+  --r-control: 12px;
+  --r-card: 18px;
   --dur-fast: 120ms;
   --dur-base: 200ms;
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
@@ -59,6 +71,7 @@
     --muted: #8c99a5;
     --accent: #d2ac6a;
     --accent-fg: #17120a;
+    --accent-2: #a78bfa;
     --positive: #4fcba8;
     --negative: #f2876b;
     --warning: #f0a848;
@@ -86,6 +99,7 @@
   --muted: #8c99a5;
   --accent: #d2ac6a;
   --accent-fg: #17120a;
+  --accent-2: #a78bfa;
   --positive: #4fcba8;
   --negative: #f2876b;
   --warning: #f0a848;
@@ -119,6 +133,7 @@
   --muted: #8c99a5;
   --accent: #d2ac6a;
   --accent-fg: #17120a;
+  --accent-2: #a78bfa;
   --positive: #4fcba8;
   --negative: #f2876b;
   --warning: #f0a848;
@@ -157,8 +172,14 @@
   --font-display: var(--font-bricolage), var(--font-manrope), "Segoe UI", system-ui, sans-serif;
 }
 
+/* Dois brilhos suaves e fixos no fundo, latão no alto e violeta embaixo (opção Doca): dão
+   profundidade sem colorir os cards, que continuam lisos por cima */
 body {
-  background: var(--background);
+  background:
+    radial-gradient(60rem 36rem at 12% -8%, color-mix(in oklab, var(--accent) 9%, transparent), transparent 70%),
+    radial-gradient(52rem 40rem at 105% 110%, color-mix(in oklab, var(--accent-2) 8%, transparent), transparent 70%),
+    var(--background);
+  background-attachment: fixed;
   color: var(--foreground);
   font-family: var(--font-sans);
   font-size: 15px;
@@ -182,9 +203,14 @@ summary,
   cursor: pointer;
 }
 
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+/* Na camada base: assim o foco próprio de um componente (o anel dos campos, que acompanha a borda
+   arredondada) vence este contorno genérico. Fora de camada ele ganhava de qualquer utilitário e
+   desenhava um segundo retângulo, afastado 2px, em volta dos campos */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 }
 
 .tabular {

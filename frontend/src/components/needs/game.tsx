@@ -12,7 +12,7 @@ import { cycleName } from "@/lib/cycle";
 import { money, shortDate } from "@/lib/format";
 import { boing, Draggable, FULL, gsap, prefersReducedMotion, useGSAP } from "@/lib/motion";
 import { notify } from "@/lib/signals";
-import { playCoin } from "@/lib/sound";
+import { playSound } from "@/lib/sound";
 import type { NeedCard } from "./types";
 
 /**
@@ -106,6 +106,7 @@ export function NeedsGame({ month, onClose }: { month: string; onClose: (changed
   const play = contextSafe((side: Side, card: NeedCard, el: HTMLElement | null) => {
     if (busy.current) return;
     busy.current = true;
+    playSound("tap");
     Draggable.get(el)?.kill();
     api(`/transactions/${card.id}/need`, { method: "PUT", body: JSON.stringify({ need: side === "need" }) }).catch(
       (e) => notify(e.message, "bad"),
@@ -201,7 +202,7 @@ export function NeedsGame({ month, onClose }: { month: string; onClose: (changed
       mm.add(FULL, () => {
         gsap.from("[data-done] > *", { y: 30, autoAlpha: 0, stagger: 0.08, duration: 0.5, ease: "back.out(1.8)" });
       });
-      if (played.length && share <= 0.4) playCoin();
+      if (played.length && share <= 0.4) playSound("fanfare");
       return () => mm.revert();
     },
     { scope: root, dependencies: [done] },

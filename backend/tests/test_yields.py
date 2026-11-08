@@ -73,3 +73,38 @@ def test_pot_yields_average_and_day_by_day(client, db, auth_headers):
     ]
     resp = client.get(f"/pots/{pot.id}/yields", headers=auth_headers)
     assert resp.status_code == 200 and len(resp.json()["daily"]) == 2
+
+
+def test_frozen_balance_gets_estimated(db):
+    """PicPay repetindo o mesmo saldo: a partir do último dia que mudou, estima pela média."""
+    conn = Connection(external_id="item-f", institution_name="PicPay", status="UPDATED")
+    pot = SavingsPot(name="Reserva")
+    db.add_all([conn, pot])
+    db.flush()
+    inv = Investment(
+        connection_id=conn.id,
+        external_id="cdb-f",
+        name="CDB",
+        type="FIXED_INCOME",
+        balance=Decimal("1020"),
+        amount_original=Decimal("1000"),
+        purchase_date=date(2026, 9, 28),
+        pot_id=pot.id,
+    )
+    db.add(inv)
+    db.flush()
+    for day, balance in [(23, "1019"), (24, "1020"), (27, "1020"), (28, "1020"), (29, "1020")]:
+        db.add(
+            InvestmentSnapshot(
+                investment_id=inv.id, day=date(2026, 10, day), balance=Decimal(balance)
+            )
+        )
+    db.commit()
+
+    # Sem mudar desde sábado 24/10: na quinta 29/10 são 4 dias úteis. A média é 1020 − 1000 = 20
+    # em 23 dias úteis desde a compra (R$ 0,87 por dia útil): 1020 + 4 × 0,87
+    since, estimate = yields.frozen_estimate(pot, date(2026, 10, 29))
+    assert since == date(2026, 10, 24)
+    assert estimate == Decimal("1023.48")
+    # Ainda dentro da tolerância (1 dia útil sem mudar): sem estimativa
+    assert yields.frozen_estimate(pot, date(2026, 10, 26)) == (None, None)

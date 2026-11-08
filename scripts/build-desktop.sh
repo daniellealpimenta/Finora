@@ -108,4 +108,7 @@ if (( install )); then
   echo
   echo "Instalado em $target/Finora.app (abra pelo Launchpad ou Spotlight)"
 fi
+# A cópia sem assinatura que o PyInstaller deixa em dist/ aparecia no Spotlight como um segundo
+# Finora (desatualizado). O que vale é o .dmg e o instalado em Aplicativos
+rm -rf "$root/backend/dist/Finora.app"
 echo "Para distribuir: $dmg"

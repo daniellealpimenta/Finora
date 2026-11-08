@@ -7,7 +7,7 @@ import { api, qs, type Category } from "@/lib/api";
 import { cycleName, cycleRange } from "@/lib/cycle";
 import { money, percent, shiftMonth } from "@/lib/format";
 import { FULL, gsap, prefersReducedMotion, SplitText, useGSAP } from "@/lib/motion";
-import { playCoin } from "@/lib/sound";
+import { playSound } from "@/lib/sound";
 import { CategoryIcon } from "./category-icon";
 import type { CategoryRow, Merchant, Summary } from "./dashboard/types";
 import type { NeedsSummary } from "./needs/types";
@@ -89,6 +89,7 @@ export function CycleRecap({ cycleKey, onClose }: { cycleKey: string; onClose: (
   // Abre num círculo que cresce do centro
   useGSAP(
     () => {
+      playSound("whoosh");
       const mm = gsap.matchMedia();
       mm.add(FULL, () => {
         gsap.fromTo(
@@ -168,7 +169,7 @@ export function CycleRecap({ cycleKey, onClose }: { cycleKey: string; onClose: (
           );
         }
       });
-      if (current.rain) playCoin();
+      if (current.rain) playSound("fanfare");
       return () => mm.revert();
     },
     { dependencies: [step, Boolean(data)], scope: root, revertOnUpdate: true },

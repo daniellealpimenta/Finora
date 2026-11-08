@@ -3,13 +3,14 @@
 import { useRef } from "react";
 
 import { gsap, prefersReducedMotion, useGSAP } from "@/lib/motion";
-import { playCoin } from "@/lib/sound";
+import { playSound } from "@/lib/sound";
 
 /**
  * A porta do cofre abrindo depois do login (MASTER.md, "Movimento"). O segredo gira e passa do
- * ponto, os 8 ferrolhos recolhem, a maçaneta vira e a porta se abre em 3D com um clarão de
- * latão. No fim a tela vira o fundo do app e `onOpen` libera a navegação. Sem animação
- * ("reduzir movimento"), libera na hora.
+ * ponto (um clique a cada número), os 8 ferrolhos recolhem com um baque, a maçaneta trava, um fio
+ * de luz escapa em volta da porta e ela se abre em 3D enquanto a câmera avança. Uma luz quente
+ * nasce do vão e o fundo do app entra por cima dela devagar, sem corte. Sem animação ("reduzir
+ * movimento"), libera na hora.
  */
 const C = 180;
 const BOLTS = Array.from({ length: 8 }, (_, i) => i * 45);
@@ -27,23 +28,55 @@ export function VaultOpening({ onOpen }: { onOpen: () => void }) {
       }
       const q = gsap.utils.selector(root);
       const dial = q("[data-dial]");
-      gsap
-        .timeline({ onComplete: onOpen })
-        .from(root.current, { autoAlpha: 0, duration: 0.25 })
+      // Um clique a cada 18° que o segredo passa (5 números), no máximo um a cada 30ms
+      let lastStep = 0;
+      let lastAt = 0;
+      const clicks = () => {
+        const step = Math.floor(Number(gsap.getProperty(dial[0], "rotation")) / 18);
+        const now = performance.now();
+        if (step !== lastStep && now - lastAt > 30) {
+          playSound("tick");
+          lastAt = now;
+        }
+        lastStep = step;
+      };
+      const tl = gsap.timeline({ onComplete: onOpen });
+      tl.from(root.current, { autoAlpha: 0, duration: 0.25 })
         .from(q("[data-door]"), { scale: 0.86, rotation: -20, duration: 0.6, ease: "back.out(1.6)" }, 0)
         .from(q("[data-word]"), { yPercent: 110, stagger: 0.05, duration: 0.6, ease: "power4.out" }, 0.1)
-        .to(dial, { rotation: "+=620", svgOrigin: `${C} ${C}`, duration: 1.0, ease: "power2.inOut" }, 0.3)
-        .to(dial, { rotation: "-=230", svgOrigin: `${C} ${C}`, duration: 0.6, ease: "power2.inOut" })
-        .to(dial, { rotation: "+=95", svgOrigin: `${C} ${C}`, duration: 0.45, ease: "dial" })
+        .to(dial, { rotation: "+=620", svgOrigin: `${C} ${C}`, duration: 1.0, ease: "power2.inOut", onUpdate: clicks }, 0.3)
+        .to(dial, { rotation: "-=230", svgOrigin: `${C} ${C}`, duration: 0.6, ease: "power2.inOut", onUpdate: clicks })
+        .to(dial, { rotation: "+=95", svgOrigin: `${C} ${C}`, duration: 0.45, ease: "dial", onUpdate: clicks })
         .to(q("[data-tick]"), { stroke: "var(--coin)", duration: 0.04, stagger: 0.004 }, "-=0.4")
-        .add(() => playCoin())
-        .to(q("[data-bolt]"), { x: -38, duration: 0.28, stagger: 0.045, ease: "power3.in" })
-        .to(q("[data-handle]"), { rotation: 90, svgOrigin: `${C} ${C}`, duration: 0.55, ease: "power2.inOut" }, "-=0.1")
-        .to(q("[data-glow]"), { autoAlpha: 0.8, scale: 1.2, duration: 0.35 }, "<0.25")
-        .to(q("[data-door]"), { rotationY: -108, transformOrigin: "0% 50%", duration: 1.0, ease: "power3.inOut" })
-        .to(q("[data-title]"), { y: -24, autoAlpha: 0, duration: 0.5, ease: "power2.in" }, "<")
-        .to(q("[data-flash]"), { autoAlpha: 1, duration: 0.35, ease: "power2.in" }, "-=0.4")
-        .to(q("[data-ground]"), { autoAlpha: 1, duration: 0.3 });
+        .addLabel("bolts")
+        .to(q("[data-bolt]"), { x: -38, duration: 0.28, stagger: 0.045, ease: "power3.in" }, "bolts");
+      // Os ferrolhos batem em pares: quatro baques no ritmo em que chegam ao fim
+      for (let i = 0; i < 4; i++) tl.call(() => playSound("clunk"), [], `bolts+=${0.24 + i * 0.09}`);
+      tl.to(q("[data-handle]"), { rotation: 90, svgOrigin: `${C} ${C}`, duration: 0.55, ease: "power2.inOut" }, "bolts+=0.5")
+        .call(() => playSound("latch"), [], ">-0.05")
+        // Fio de luz escapando em volta da porta destravada (um anel, não um disco)
+        .fromTo(
+          q("[data-glow]"),
+          { autoAlpha: 0, scale: 0.97 },
+          { autoAlpha: 1, scale: 1.03, duration: 0.7, ease: "sine.inOut" },
+          "<",
+        )
+        .addLabel("open", ">-0.1")
+        .call(() => playSound("door"), [], "open")
+        .to(q("[data-door]"), { rotationY: -108, transformOrigin: "0% 50%", duration: 1.25, ease: "power2.inOut" }, "open")
+        // A câmera avança para dentro do cofre enquanto a porta abre
+        .to(q("[data-stage]"), { scale: 1.35, duration: 1.7, ease: "power2.inOut" }, "open")
+        .to(q("[data-title]"), { y: -24, autoAlpha: 0, duration: 0.5, ease: "power2.in" }, "open")
+        .to(q("[data-glow]"), { autoAlpha: 0, duration: 0.6, ease: "sine.out" }, "open+=0.4")
+        // A luz nasce do vão, pequena e quente, e cresce com uma curva longa
+        .fromTo(
+          q("[data-flash]"),
+          { autoAlpha: 0, scale: 0.08 },
+          { autoAlpha: 1, scale: 1, duration: 1.15, ease: "expo.inOut" },
+          "open+=0.35",
+        )
+        // O fundo do app entra por cima da luz, devagar: a Visão geral aparece sem corte
+        .to(q("[data-ground]"), { autoAlpha: 1, duration: 0.7, ease: "sine.inOut" }, ">-0.45");
     },
     { scope: root },
   );
@@ -56,10 +89,10 @@ export function VaultOpening({ onOpen }: { onOpen: () => void }) {
       className="theme-dark fixed inset-0 z-[60] grid place-items-center overflow-hidden bg-background text-foreground"
     >
       <div className="grid justify-items-center gap-8 px-4">
-        <div className="relative w-[min(420px,78vw)] [perspective:1400px]">
+        <div data-stage className="relative w-[min(420px,78vw)] [perspective:1400px]">
           <div
             data-glow
-            className="invisible absolute inset-[10%] rounded-full bg-[radial-gradient(circle,var(--coin),transparent_65%)]"
+            className="invisible absolute -inset-[6%] rounded-full bg-[radial-gradient(circle,transparent_58%,color-mix(in_oklab,var(--coin)_55%,transparent)_66%,color-mix(in_oklab,var(--coin)_18%,transparent)_72%,transparent_80%)]"
           />
           <svg data-door viewBox="0 0 360 360" className="relative block w-full [transform-style:preserve-3d]" aria-hidden>
             <defs>
@@ -131,9 +164,11 @@ export function VaultOpening({ onOpen }: { onOpen: () => void }) {
           ))}
         </p>
       </div>
+      {/* A luz de dentro do cofre: um quadrado grande centrado que cresce do vão. O degradê é
+          longo e desbota em várias paradas, para não virar um disco amarelo de borda dura */}
       <div
         data-flash
-        className="invisible absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,#f3d59a,var(--coin)_30%,transparent_72%)]"
+        className="pointer-events-none invisible absolute top-1/2 left-1/2 size-[230vmax] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,#fff6e4_0%,color-mix(in_oklab,#f3d59a_85%,transparent)_10%,color-mix(in_oklab,var(--coin)_45%,transparent)_24%,color-mix(in_oklab,var(--coin)_14%,transparent)_38%,transparent_56%)]"
       />
       {/* Termina no fundo do app (no tema de quem usa), para a Visão geral entrar sem corte */}
       <div data-ground className="invisible absolute inset-0 bg-[var(--app-bg)]" />

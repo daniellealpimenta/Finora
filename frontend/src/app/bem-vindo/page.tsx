@@ -1,6 +1,16 @@
 "use client";
 
-import { ArrowRight, ExternalLink, KeyRound, PartyPopper, ShieldCheck, UserRound } from "lucide-react";
+import {
+  ArrowRight,
+  ExternalLink,
+  KeyRound,
+  MonitorSmartphone,
+  PartyPopper,
+  ShieldCheck,
+  UserRound,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -8,10 +18,12 @@ import { CoinMark, ThemeToggle } from "@/components/chrome";
 import { Guilloche } from "@/components/guilloche";
 import { Pila, type PilaMood } from "@/components/pila";
 import { Field } from "@/components/profile/form";
+import { ImportPanel } from "@/components/profile/transfer";
 import { Button, ErrorNote } from "@/components/ui";
 import { VaultOpening } from "@/components/vault";
 import { api, createFirstUser, type SetupStatus } from "@/lib/api";
 import { usePageEnter } from "@/lib/motion";
+import { playSound, setSoundOn, soundOn } from "@/lib/sound";
 
 /**
  * Onboarding da primeira abertura (banco sem usuário): cria a conta e preenche as chaves da
@@ -30,6 +42,8 @@ const SAYS: Record<Step, string> = {
 export default function BemVindoPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("conta");
+  // Em vez de criar acesso, trazer o .finora de outro computador
+  const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [pluggyReady, setPluggyReady] = useState(false);
@@ -156,7 +170,30 @@ export default function BemVindoPage() {
           <ThemeToggle />
         </div>
 
-        {step === "conta" && (
+        {step === "conta" && importing && (
+          <div
+            data-enter
+            className="grid w-full max-w-md gap-4 rounded-card border border-card-edge bg-surface p-6 sm:p-8"
+          >
+            <div className="grid gap-1">
+              <h2 className="font-display text-[28px] font-bold tracking-[-0.02em]">Trazer meus dados</h2>
+              <p className="text-sm text-muted">
+                No outro computador, vá em <b className="text-foreground">Perfil → Usar em outro computador → Exportar
+                dados</b> e traga o arquivo .finora para cá (pendrive, e-mail ou uma pasta do iCloud Drive, Google
+                Drive ou OneDrive).
+              </p>
+            </div>
+            <ImportPanel
+              endpoint="/setup/import"
+              onDone={(info) => router.replace(`/login?importado=${encodeURIComponent(info.device)}`)}
+            />
+            <Button variant="ghost" className="justify-self-start" onClick={() => setImporting(false)}>
+              Criar um acesso novo
+            </Button>
+          </div>
+        )}
+
+        {step === "conta" && !importing && (
           <form
             data-enter
             onSubmit={onAccount}
@@ -193,6 +230,14 @@ export default function BemVindoPage() {
               <UserRound />
               {loading ? "Criando…" : "Criar acesso"}
             </Button>
+            <button
+              type="button"
+              onClick={() => setImporting(true)}
+              className="flex items-center justify-center gap-2 rounded-control py-2 text-sm font-semibold text-accent hover:underline"
+            >
+              <MonitorSmartphone className="size-4" aria-hidden />
+              Já usa o Finora em outro computador? Traga seus dados
+            </button>
           </form>
         )}
 
@@ -279,6 +324,7 @@ export default function BemVindoPage() {
                 bancos. As chaves da Pluggy dá para trocar depois no Perfil.
               </p>
             </div>
+            <SoundChoice />
             <Button
               variant="primary"
               className="min-h-11 w-full"
@@ -298,5 +344,44 @@ export default function BemVindoPage() {
         )}
       </section>
     </main>
+  );
+}
+
+/** O som é perguntado aqui, não imposto: um "tlim" que ninguém pediu assusta (MASTER.md, "Som"). */
+function SoundChoice() {
+  const [on, setOn] = useState(true);
+  useEffect(() => setOn(soundOn()), []);
+
+  function choose(next: boolean) {
+    setOn(next);
+    setSoundOn(next);
+    if (next) playSound("coin", true);
+  }
+
+  return (
+    <fieldset className="grid gap-2">
+      <legend className="mb-2 text-sm font-semibold">Quer ouvir os sons do app?</legend>
+      <p className="-mt-1 text-xs leading-relaxed text-muted">
+        Moedinhas quando entra dinheiro e um toque quando algo é salvo. Dá para mudar no botão do topo.
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        {[
+          { value: true, label: "Com som", icon: Volume2 },
+          { value: false, label: "Sem som", icon: VolumeX },
+        ].map(({ value, label, icon: Icon }) => (
+          <Button
+            key={label}
+            type="button"
+            variant={on === value ? "primary" : "secondary"}
+            aria-pressed={on === value}
+            className="min-h-11"
+            onClick={() => choose(value)}
+          >
+            <Icon />
+            {label}
+          </Button>
+        ))}
+      </div>
+    </fieldset>
   );
 }

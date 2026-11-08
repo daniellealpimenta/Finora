@@ -100,3 +100,35 @@ def pot_yields(pot: SavingsPot, today: date, limit: int = 30) -> dict:
         "tracking_since": days[0] if days else None,
         "daily": list(reversed(daily))[:limit],
     }
+
+
+# Saldo repetido por mais que isto (dias úteis) = o banco parou de atualizar o rendimento
+FROZEN_BUSINESS_DAYS = 2
+
+
+def frozen_estimate(pot: SavingsPot, today: date) -> tuple[date | None, Decimal | None]:
+    """(desde quando o saldo não muda, saldo estimado hoje) quando o banco repete o mesmo saldo.
+
+    Pelo Open Finance, alguns bancos (o PicPay, em novembro de 2026) mandam o mesmo saldo de CDB
+    por dias seguidos, mesmo rendendo. Pelos registros diários (InvestmentSnapshot) dá para ver
+    o último dia em que o saldo do cofrinho mudou; daí em diante estimamos com a média por dia
+    útil desde a aplicação. Sem registros suficientes, ou saldo mudando, devolve (None, None).
+    """
+    totals: dict[date, Decimal] = defaultdict(lambda: ZERO)
+    for inv in pot.investments:
+        for s in inv.snapshots:
+            totals[s.day] += s.balance
+    days = sorted(totals)
+    if len(days) < 2:
+        return None, None
+    changed = days[0]
+    for prev, day in zip(days, days[1:], strict=False):
+        if totals[day] != totals[prev]:
+            changed = day
+    if changed == days[0] or business_days(changed, today) < FROZEN_BUSINESS_DAYS:
+        return None, None
+    average = pot_yields(pot, today, limit=0)["average_per_business_day"]
+    if average <= 0:
+        return None, None
+    balance = sum((i.balance for i in pot.investments), ZERO)
+    return changed, (balance + average * business_days(changed, today)).quantize(_CENTS)

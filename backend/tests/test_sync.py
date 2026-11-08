@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -18,8 +18,11 @@ from app.services import sync as sync_module
 from app.services.categories import ensure_categories, pluggy_category_key
 from app.services.sync import sync_all
 
+# Perto de hoje: o resync só olha os últimos 30 dias, então uma data fixa vencia com o tempo
+RECENT = (date.today() - timedelta(days=3)).strftime("%Y-%m-%dT03:00:00.000Z")
 
-def tx(id_, amount, type_, category_id=None, date_="2026-10-05T03:00:00.000Z", **extra):
+
+def tx(id_, amount, type_, category_id=None, date_=RECENT, **extra):
     return {
         "id": id_,
         "description": extra.pop("description", f"Compra {id_}"),
@@ -151,7 +154,7 @@ def test_first_sync_normalizes_and_categorizes(db, connection, monkeypatch):
 
     t = by_ext(db)
     assert t["t1"].amount == Decimal("-120") and cat_key(db, t["t1"]) == "groceries"
-    assert t["t1"].date == date(2026, 10, 5)  # 03:00Z = meia-noite em Brasília
+    assert t["t1"].date == date.fromisoformat(RECENT[:10])  # 03:00Z = meia-noite em Brasília
     assert t["t2"].amount == Decimal("5000") and cat_key(db, t["t2"]) == "salary"
     assert t["c1"].amount == Decimal("-300") and cat_key(db, t["c1"]) == "delivery"
     assert (t["c1"].installment_number, t["c1"].installment_total) == (2, 3)

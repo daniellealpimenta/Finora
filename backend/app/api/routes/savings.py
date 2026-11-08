@@ -44,6 +44,9 @@ class PotOut(BaseModel):
     applied: Decimal
     earned: Decimal
     investments: int
+    # O banco repete o mesmo saldo desde esta data; estimated_balance é o que deve estar hoje
+    frozen_since: date | None = None
+    estimated_balance: Decimal | None = None
 
 
 class PotIn(BaseModel):
@@ -84,6 +87,7 @@ def applied_amount(i: Investment) -> Decimal:
 def _pot_out(pot: SavingsPot) -> PotOut:
     balance = sum((i.balance for i in pot.investments), Decimal("0"))
     applied = sum((applied_amount(i) for i in pot.investments), Decimal("0"))
+    frozen_since, estimated = yields.frozen_estimate(pot, date.today())
     return PotOut(
         id=pot.id,
         name=pot.name,
@@ -92,6 +96,8 @@ def _pot_out(pot: SavingsPot) -> PotOut:
         applied=applied,
         earned=balance - applied,
         investments=len(pot.investments),
+        frozen_since=frozen_since,
+        estimated_balance=estimated,
     )
 
 

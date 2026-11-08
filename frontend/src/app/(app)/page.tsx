@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutGrid, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -21,8 +21,10 @@ import {
   RING_LENGTH,
 } from "@/components/dashboard/cards";
 import { BillsCard, CardsCard } from "@/components/dashboard/credit";
+import { QuickActions } from "@/components/dashboard/actions";
 import { CategoryTilesCard, CycleRulerCard, RiverCard } from "@/components/dashboard/extras";
 import { ForecastCard } from "@/components/dashboard/forecast";
+import { RecentCard } from "@/components/dashboard/recent";
 import { PanelCatalog, PanelGrid, usePanelLayout } from "@/components/dashboard/panel";
 import type {
   CategoryRow,
@@ -37,7 +39,10 @@ import { CyclePicker } from "@/components/cycle-picker";
 import { NeedsCard } from "@/components/needs/card";
 import { Pila, useMascot } from "@/components/pila";
 import { CycleRecap, useRecap } from "@/components/recap";
-import { Button, Card, ErrorNote, PageHeader } from "@/components/ui";
+import { StaleNote } from "@/components/stale-note";
+import { Card, ErrorNote, IconButton, PageHeader, tone } from "@/components/ui";
+import { PanelMenu } from "@/components/dashboard/panel-menu";
+import { dismiss, isDismissed } from "@/lib/dismiss";
 import {
   api,
   qs,
@@ -50,6 +55,7 @@ import {
 import { cycleName, useCycle } from "@/lib/cycle";
 import { shortDate } from "@/lib/format";
 import { FULL, gsap, motion, prefersReducedMotion, useGSAP } from "@/lib/motion";
+import { notify } from "@/lib/signals";
 
 export default function Dashboard() {
   const { key: month, setKey: setMonth, info: cycle, error: cycleError } = useCycle();
@@ -68,6 +74,8 @@ export default function Dashboard() {
   const [forecast, setForecast] = useState<Forecast | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  // Avisos fechados (lib/dismiss) moram no localStorage; isto só força o redesenho
+  const [, setDismissTick] = useState(0);
   const layout = usePanelLayout();
   const root = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -198,27 +206,64 @@ export default function Dashboard() {
 
   return (
     <div ref={root}>
+      {/* No topo, só o seletor de ciclo: Personalizar fica no fim do painel e o fechamento vira faixa */}
       <PageHeader
         title="Visão geral"
         actions={
           <>
-            <Button variant={editing ? "primary" : "ghost"} onClick={() => setEditing(!editing)} aria-pressed={editing}>
-              <LayoutGrid />
-              {editing ? "Concluir" : "Personalizar"}
-            </Button>
-            {recap.closedKey && (
-              <Button variant="ghost" onClick={recap.show}>
-                <Sparkles />
-                Fechamento de {cycleName(recap.closedKey)}
-              </Button>
-            )}
             {month && <CyclePicker value={month} info={cycle} onChange={changeMonth} />}
+            <PanelMenu
+              actions={[
+                { label: editing ? "Concluir a montagem" : "Personalizar o painel", icon: "edit", onClick: () => setEditing(!editing) },
+                {
+                  label: "Voltar ao padrão",
+                  icon: "reset",
+                  disabled: layout.isDefault,
+                  onClick: () => {
+                    layout.reset();
+                    notify("O painel voltou ao padrão.", "ok", { mood: "happy" });
+                  },
+                },
+                ...(recap.closedKey
+                  ? [{ label: `Rever o fechamento de ${cycleName(recap.closedKey)}`, icon: "recap" as const, onClick: recap.show }]
+                  : []),
+              ]}
+            />
           </>
         }
       />
       {recap.open && recap.closedKey && <CycleRecap cycleKey={recap.closedKey} onClose={recap.close} />}
       <div ref={content} className="grid gap-4">
         {(error || cycleError) && <ErrorNote>{error ?? cycleError}</ErrorNote>}
+
+        <StaleNote />
+
+        {recap.closedKey && !isDismissed(`recap:${recap.closedKey}`) && (
+          <div
+            data-enter
+            style={tone("var(--accent)")}
+            className="tint flex min-h-11 items-center gap-1 rounded-card py-1.5 pr-1.5 pl-4 text-sm font-semibold"
+          >
+            <button type="button" onClick={recap.show} className="group flex flex-1 items-center gap-3 py-1.5 text-left">
+              <Sparkles className="size-4 shrink-0" aria-hidden />
+              <span className="flex-1 text-foreground">O fechamento de {cycleName(recap.closedKey)} está pronto</span>
+              <span className="flex items-center gap-1">
+                Ver
+                <ArrowRight className="size-4 transition-transform duration-[var(--dur-fast)] group-hover:translate-x-0.5" />
+              </span>
+            </button>
+            <IconButton
+              label="Fechar este aviso (o fechamento continua nos três pontinhos)"
+              onClick={() => {
+                dismiss(`recap:${recap.closedKey}`);
+                setDismissTick((t) => t + 1);
+              }}
+              className="text-[var(--c)] hover:bg-[color-mix(in_oklab,var(--c)_14%,transparent)]"
+            >
+              <X />
+            </IconButton>
+          </div>
+        )}
 
         {data && !hasData && (
           <Card className="grid justify-items-center gap-4 py-10 text-center">
@@ -233,7 +278,10 @@ export default function Dashboard() {
           </Card>
         )}
 
+
         {editing && <PanelCatalog layout={layout} onDone={() => setEditing(false)} />}
+
+        {data && hasData && <QuickActions cards={cards} pots={pots} month={data.month} />}
 
         {s && data && hasData && (
           <PanelGrid
@@ -266,6 +314,7 @@ export default function Dashboard() {
               river: <RiverCard data={data} keyById={keyById} />,
               ruler: forecast && s.cycle.is_current ? <CycleRulerCard forecast={forecast} /> : null,
               tiles: <CategoryTilesCard rows={data.categories} keyById={keyById} month={data.month} />,
+              recent: <RecentCard keyById={keyById} />,
             }}
           />
         )}

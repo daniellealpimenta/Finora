@@ -187,6 +187,53 @@ export function CashflowChart({ data, selected }: { data: CashflowPoint[]; selec
   );
 }
 
+/** Receitas e despesas em linha: mostra a tendência dos 12 ciclos, com o ciclo escolhido marcado. */
+export function CashflowLines({ data, selected }: { data: CashflowPoint[]; selected: string }) {
+  return (
+    <div className="h-64">
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart data={data} margin={{ left: 4, right: 8, top: 8 }}>
+          <CartesianGrid vertical={false} stroke={GRID} />
+          <XAxis
+            dataKey="month"
+            tickFormatter={(m) => monthLabel(m, "short")}
+            tick={AXIS_TICK}
+            axisLine={{ stroke: GRID }}
+            tickLine={false}
+          />
+          <YAxis tickFormatter={moneyCompact} tick={AXIS_TICK} axisLine={false} tickLine={false} width={64} />
+          <ReferenceLine x={selected} stroke="var(--border)" strokeDasharray="4 4" />
+          <Tooltip
+            cursor={{ stroke: "var(--border)" }}
+            content={({ active, payload, label }) => (
+              <ChartTooltip
+                active={active}
+                payload={payload as TooltipEntry[]}
+                title={monthLabel(String(label))}
+                series={CASHFLOW_SERIES}
+              />
+            )}
+          />
+          {CASHFLOW_SERIES.map((s) => (
+            <Line
+              key={s.key}
+              dataKey={s.key}
+              name={s.label}
+              stroke={s.color}
+              strokeWidth={2.5}
+              dot={{ r: 3, fill: s.color, strokeWidth: 0 }}
+              activeDot={{ r: 5 }}
+              type="monotone"
+              isAnimationActive
+              animationDuration={900}
+            />
+          ))}
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 // --- Ritmo de gasto: acumulado do ciclo x ciclo anterior --------------------------------
 
 export const DAILY_SERIES: Series[] = [
@@ -224,6 +271,18 @@ export function DailyChart({ data, today }: { data: DailyPoint[]; today?: number
     <div className="h-56">
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={data} margin={{ left: 4, right: 12, top: 8 }}>
+          {/* Degradê latão → violeta (opção Doca): a área some suave até o eixo */}
+          <defs>
+            <linearGradient id="pace-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="var(--accent)" stopOpacity={0.42} />
+              <stop offset="0.6" stopColor="var(--accent-2)" stopOpacity={0.14} />
+              <stop offset="1" stopColor="var(--accent-2)" stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id="pace-stroke" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stopColor="var(--accent)" />
+              <stop offset="1" stopColor="var(--accent-2)" />
+            </linearGradient>
+          </defs>
           <CartesianGrid vertical={false} stroke={GRID} />
           <XAxis
             dataKey="day"
@@ -277,10 +336,10 @@ export function DailyChart({ data, today }: { data: DailyPoint[]; today?: number
           <Area
             dataKey="current"
             name="Este ciclo"
-            stroke="var(--accent)"
-            strokeWidth={2.5}
-            fill="var(--accent)"
-            fillOpacity={0.12}
+            stroke="url(#pace-stroke)"
+            strokeWidth={3}
+            fill="url(#pace-fill)"
+            fillOpacity={1}
             dot={false}
             activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2 }}
             connectNulls={false}

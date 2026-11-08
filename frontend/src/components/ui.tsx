@@ -97,7 +97,7 @@ export function IconButton({
       aria-label={label}
       title={label}
       className={cx(
-        "grid size-11 place-items-center rounded-chip text-muted sm:size-9",
+        "grid size-11 place-items-center rounded-chip text-muted sm:size-10",
         "transition-[color,background-color,transform] duration-[var(--dur-fast)] ease-[var(--ease-out)] active:scale-90",
         "hover:bg-surface-2 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45",
         "[&_svg]:size-4",

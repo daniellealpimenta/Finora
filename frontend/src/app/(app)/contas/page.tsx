@@ -45,6 +45,8 @@ import { cycleRange, type CycleInfo } from "@/lib/cycle";
 import { ACCOUNT_TYPE_LABEL, dateTime, money, percent, shortDate } from "@/lib/format";
 import { FULL, gsap, motion, useGSAP, usePageEnter } from "@/lib/motion";
 import { notify, setSyncing } from "@/lib/signals";
+import { accountQuietDays, STALE_DAYS } from "@/lib/stale";
+import { announceSync } from "@/lib/sync";
 
 const STATUS: Record<string, [Status, string]> = {
   UPDATED: ["ok", "Atualizada"],
@@ -153,19 +155,8 @@ export default function ContasPage() {
       const status = await load();
       if (!status.running) {
         clearInterval(timer);
-        const r = status.last_result;
-        if (status.last_error) setError(`A sincronização falhou: ${status.last_error}`);
-        else if (r) {
-          // O Pila conta a novidade; sem nada novo, só confirma
-          if (r.created > 0)
-            notify(
-              r.created === 1 ? "Chegou 1 transação nova." : `Chegaram ${r.created} transações novas.`,
-              "ok",
-              { mood: "celebrate", coin: true },
-            );
-          else notify("Tudo em dia, nada novo nos bancos.", "ok", { mood: "happy" });
-          if (r.errors.length) setError(`Alguns bancos tiveram erro: ${r.errors.join("; ")}`);
-        }
+        const problem = announceSync(status);
+        if (problem) setError(problem);
       }
     }, 2000);
     return () => clearInterval(timer);
@@ -445,6 +436,7 @@ function AccountList({
         const limit = a.credit_limit ? Number(a.credit_limit) : null;
         const used = isCard && limit ? Math.abs(Number(a.balance)) / limit : null;
         const usedStatus: Status | null = used === null ? null : used > 0.9 ? "bad" : used > 0.6 ? "warn" : "ok";
+        const quiet = accountQuietDays(a.last_transaction_date);
         return (
           <li key={a.id} className="grid gap-2 py-3 first:pt-0 last:pb-0">
             <div className="flex items-center gap-3">
@@ -452,6 +444,11 @@ function AccountList({
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{a.name}</p>
                 <p className="text-xs text-muted">{ACCOUNT_TYPE_LABEL[a.type]}</p>
+                {quiet !== null && quiet > STALE_DAYS && a.last_transaction_date && (
+                  <p className="text-xs font-semibold text-warning">
+                    ▲ Sem transações novas desde {shortDate(a.last_transaction_date)}
+                  </p>
+                )}
               </div>
               <div className="shrink-0 text-right tabular">
                 <p className={cx("font-medium", !isCard && Number(a.balance) < 0 && "text-negative")}>

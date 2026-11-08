@@ -1,11 +1,10 @@
 "use client";
 
-import { Check, Moon, Sun, TriangleAlert, Volume2, VolumeX } from "lucide-react";
+import { Check, Moon, Sun, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { FULL, gsap, motion, prefersReducedMotion, useGSAP } from "@/lib/motion";
 import { dismissToast, useSyncing, useToasts, type Toast } from "@/lib/signals";
-import { playCoin, setSoundOn, soundOn } from "@/lib/sound";
 import { Pila } from "./pila";
 import { IconButton, cx } from "./ui";
 
@@ -51,10 +50,22 @@ export function CoinMark({ size = "md", className }: { size?: "md" | "lg"; class
   );
 }
 
-function currentTheme(): "light" | "dark" {
+export function currentTheme(): "light" | "dark" {
   const set = document.documentElement.dataset.theme;
   if (set === "light" || set === "dark") return set;
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+/** Troca o tema e lembra a escolha. Usado pelo botão, pelo menu do avatar e pelo ⌘K. */
+export function toggleTheme(): "light" | "dark" {
+  const next = currentTheme() === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try {
+    localStorage.setItem("mf_theme", next);
+  } catch {
+    /* storage indisponível: vale só nesta aba */
+  }
+  return next;
 }
 
 export function ThemeToggle() {
@@ -66,14 +77,7 @@ export function ThemeToggle() {
 
   const { contextSafe } = useGSAP();
   const toggle = contextSafe(() => {
-    const next = currentTheme() === "dark" ? "light" : "dark";
-    document.documentElement.dataset.theme = next;
-    try {
-      localStorage.setItem("mf_theme", next);
-    } catch {
-      /* storage indisponível: vale só nesta aba */
-    }
-    setTheme(next);
+    setTheme(toggleTheme());
     if (!prefersReducedMotion())
       gsap.fromTo(icon.current, { rotation: -180 }, { rotation: 0, ...motion.theme });
   });
@@ -86,26 +90,6 @@ export function ThemeToggle() {
       <span ref={icon} className="grid place-items-center">
         {theme === "dark" ? <Sun /> : <Moon />}
       </span>
-    </IconButton>
-  );
-}
-
-/** Liga e desliga o "tlim" de moeda. Ao ligar, toca uma vez para você ouvir como é. */
-export function SoundToggle({ className }: { className?: string }) {
-  const [on, setOn] = useState(true);
-  useEffect(() => setOn(soundOn()), []);
-  return (
-    <IconButton
-      className={className}
-      label={on ? "Desligar som de moeda" : "Ligar som de moeda"}
-      aria-pressed={on}
-      onClick={() => {
-        setSoundOn(!on);
-        setOn(!on);
-        if (!on) playCoin(true);
-      }}
-    >
-      {on ? <Volume2 /> : <VolumeX />}
     </IconButton>
   );
 }
