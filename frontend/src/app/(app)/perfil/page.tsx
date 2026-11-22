@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { NotificationsCard } from "@/components/profile/notifications";
+import { PhoneCard } from "@/components/profile/phone";
 import { TransferCard } from "@/components/profile/transfer";
 import { Field, FormDialog } from "@/components/profile/form";
 import { MASCOTS, Pila, useMascot, type MascotId } from "@/components/pila";
@@ -218,6 +219,8 @@ export default function PerfilPage() {
           <MascotCard />
 
           <NotificationsCard />
+
+          <PhoneCard />
 
           <Card data-enter className="lg:col-span-2">
             <CardTitle icon={HardDrive} color="var(--cat-home)" hint="nada vai para a nuvem">
