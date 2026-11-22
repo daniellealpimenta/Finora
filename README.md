@@ -42,7 +42,9 @@ categoriza os gastos e mostra, ciclo a ciclo, quanto dá para gastar sem apertar
 
 ## 🔒 Roda 100% local
 
-- 🏠 A API escuta só em `127.0.0.1`; nada é exposto à rede.
+- 🏠 A API escuta só em `127.0.0.1`; nada é exposto à rede. A exceção é o
+  [acesso pelo celular](#-no-celular-finora-mobile), que você liga se quiser: aí ela aceita só
+  aparelhos pareados e só pela Tailscale, uma rede privada e criptografada.
 - 🏦 Seus dados bancários passam pela [Pluggy](https://pluggy.ai) (necessário para o Open
   Finance), mas a sua cópia fica só na sua máquina, num arquivo SQLite.
 - 🤖 O assistente usa um modelo rodando no seu computador (Ollama). Nenhuma transação vai para
@@ -394,6 +396,26 @@ SmartScreen aparece na primeira vez.
 - **Assistente**: precisa do [Ollama](https://ollama.com) rodando na máquina; detalhes em
   [`docs/assistente-local.md`](docs/assistente-local.md).
 
+### 📱 No celular (Finora Mobile)
+
+O app [Finora Mobile](https://github.com/daniellealpimenta/FinoraMobile) (Expo / React Native)
+mostra os números deste Finora no celular: livre agora, previsão, transações, cofrinhos,
+orçamentos, sync com a Pluggy, conectar banco, desejos, o jogo "Precisava?" e o Pila com IA.
+Os dados continuam neste computador; o celular só lê e escreve pela API.
+
+1. Instale a [Tailscale](https://tailscale.com/download) neste computador e no celular, com a
+   mesma conta.
+2. No Finora, abra **Perfil › Celular** e ligue o **acesso pelo celular**. No programa, feche e
+   abra de novo para valer. No modo web, rode a API assim:
+   `FINORA_LISTEN_ALL=1 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000`.
+3. Toque em **Parear um celular** e leia o QR com o app (ou digite o endereço e o código de 6
+   dígitos, que valem 5 minutos).
+
+O celular recebe um token próprio, guardado no armazenamento seguro dele; a senha não vai
+para o aparelho. Em **Perfil › Celular** aparecem os aparelhos pareados, e dá para desconectar
+qualquer um. Um gasto anotado no celular fica como lançamento manual até o banco mandar o
+mesmo gasto: aí o sync troca um pelo outro e mantém a categoria escolhida.
+
 ### 🧪 Testes e lint
 
 ```bash
@@ -407,6 +429,9 @@ cd frontend && npm run lint && npm run build
 - 🔐 IDs de conexão da Pluggy criptografados no banco (`FIELD_ENCRYPTION_KEY`)
 - 🙈 O segredo da Pluggy nunca sai do backend; clientes recebem só um *connect token* temporário
 - 👋 A tela de boas-vindas (criar a primeira conta) só funciona com o banco sem nenhum usuário
+- 📱 Acesso pelo celular desligado por padrão. Ligado: fora do computador, só endereços da
+  Tailscale e só com token de aparelho (guardado como hash, revogável); login limitado a 10
+  erros por IP a cada 15 minutos
 - 🧠 O assistente só aceita um LLM em endereço local (loopback), mesmo com um `.env` errado
 - 💽 Recomendado: BitLocker ativo e manter o projeto **fora do OneDrive**, para o `.env`
   não ser sincronizado com a nuvem
