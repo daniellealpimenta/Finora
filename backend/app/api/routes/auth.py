@@ -1,10 +1,10 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, model_validator
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser, DbSession
-from app.core import usernames
+from app.core import ratelimit, usernames
 from app.core.security import create_access_token, decrypt_field, verify_password, verify_totp
 from app.db.models import AppSetting, User
 from app.services import mascot
@@ -57,13 +57,21 @@ def remember_login(db: Session, login: str) -> None:
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(body: LoginRequest, db: DbSession) -> TokenResponse:
+def login(body: LoginRequest, db: DbSession, request: Request) -> TokenResponse:
     invalid = HTTPException(status.HTTP_401_UNAUTHORIZED, "Login, senha ou código inválidos")
+    # Com o acesso pelo celular ligado, o login fica exposto na Tailscale: limita os chutes
+    ip = request.client.host if request.client else "?"
+    if ratelimit.blocked(ip):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Muitas tentativas. Espere 15 minutos e tente de novo.",
+        )
     login = usernames.normalize(body.login or body.email or "")
     # Nome de usuário nunca tem "@": dá para saber qual dos dois a pessoa digitou
     field = User.email if "@" in login else User.username
     user = db.scalar(select(User).where(field == login))
     if user is None or not verify_password(body.password, user.password_hash):
+        ratelimit.fail(ip)
         raise invalid
     # 2FA é opcional por usuário (scripts.create_user --totp). O frontend só mostra o
     # campo do código quando recebe TOTP_REQUIRED.
@@ -71,7 +79,9 @@ def login(body: LoginRequest, db: DbSession) -> TokenResponse:
         if not body.totp_code:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, TOTP_REQUIRED)
         if not verify_totp(decrypt_field(user.totp_secret), body.totp_code):
+            ratelimit.fail(ip)
             raise invalid
+    ratelimit.clear(ip)
     remember_login(db, login)
     return TokenResponse(access_token=create_access_token(str(user.id)))
 

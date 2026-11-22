@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from app.api.network import RemoteAccessMiddleware
 from app.api.routes import (
     assistant,
     auth,
@@ -19,6 +20,7 @@ from app.api.routes import (
     cards,
     connections,
     dashboard,
+    devices,
     imports,
     needs,
     notifications,
@@ -33,6 +35,7 @@ from app.api.routes import (
 )
 from app.core.config import get_settings
 from app.db.session import SessionLocal, engine
+from app.services import devices as device_service
 from app.services.categories import recategorize_all
 from app.workers.scheduler import start_scheduler
 
@@ -71,6 +74,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         changed = recategorize_all(db)
         if changed:
             logging.getLogger(__name__).info("%s transações recategorizadas", changed)
+        # Opção "Acesso pelo celular", lida uma vez e espelhada em memória para o middleware
+        device_service.load_access(db)
     scheduler = start_scheduler()
     yield
     if scheduler:
@@ -88,6 +93,8 @@ def create_app() -> FastAPI:
         openapi_url=None if settings.environment == "production" else "/openapi.json",
         lifespan=lifespan,
     )
+    # Fora do computador, só a Tailscale e só celular pareado (app/api/network.py)
+    app.add_middleware(RemoteAccessMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
@@ -117,6 +124,7 @@ def create_app() -> FastAPI:
     app.include_router(updates.router)
     app.include_router(panel.router)
     app.include_router(backup.router)
+    app.include_router(devices.router)
 
     # Por último: as rotas da API têm prioridade sobre os arquivos do frontend
     frontend = _frontend_dir()

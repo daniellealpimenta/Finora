@@ -38,8 +38,22 @@ def db() -> Session:
 @pytest.fixture
 def client(db: Session) -> TestClient:
     app.dependency_overrides[get_db] = lambda: db
-    yield TestClient(app)
+    # Como o navegador e o programa: do próprio computador (ver app/api/network.py)
+    yield TestClient(app, client=("127.0.0.1", 50000))
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_device_state():
+    """Códigos de pareamento, opção de acesso e limite de login ficam em memória."""
+    from app.core import ratelimit
+    from app.services import devices
+
+    devices.reset_for_tests()
+    ratelimit.reset_for_tests()
+    yield
+    devices.reset_for_tests()
+    ratelimit.reset_for_tests()
 
 
 @pytest.fixture

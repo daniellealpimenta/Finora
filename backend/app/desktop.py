@@ -58,12 +58,33 @@ def _migrate() -> None:
     migrate.upgrade()
 
 
+def _phone_access_on() -> bool:
+    """Opção "Acesso pelo celular" (Perfil). Ligada, a API escuta também fora do 127.0.0.1;
+    quem filtra é o app/api/network.py (só Tailscale e só celular pareado)."""
+    from app.db.session import SessionLocal
+    from app.services import devices
+
+    try:
+        with SessionLocal() as db:
+            return devices.load_access(db)
+    except Exception:
+        logger.exception("Não deu para ler a opção de acesso pelo celular")
+        return False
+
+
 def _start_server():
+    import os
+
     import uvicorn
 
+    from app.api.routes.devices import LISTEN_ALL_ENV
     from app.main import app
 
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=PORT, log_config=None))
+    host = "127.0.0.1"
+    if _phone_access_on():
+        host = "0.0.0.0"
+        os.environ[LISTEN_ALL_ENV] = "1"
+    server = uvicorn.Server(uvicorn.Config(app, host=host, port=PORT, log_config=None))
     thread = threading.Thread(target=server.run, name="api", daemon=True)
     thread.start()
     deadline = time.monotonic() + 30

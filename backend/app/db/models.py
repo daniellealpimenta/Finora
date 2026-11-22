@@ -40,6 +40,19 @@ class User(TimestampMixin, Base):
     totp_secret: Mapped[str | None] = mapped_column(String(255))  # criptografado (Fernet)
 
 
+class Device(TimestampMixin, Base):
+    """Celular pareado com este Finora (app finoraMobile). Entra com um token longo, guardado
+    só como hash; o PC lista os aparelhos e pode desconectar qualquer um."""
+
+    __tablename__ = "devices"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class ConnectionStatus(enum.StrEnum):
     UPDATED = "UPDATED"
     UPDATING = "UPDATING"

@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 from datetime import UTC, datetime, timedelta
 
 import jwt
@@ -35,6 +37,19 @@ def create_access_token(subject: str) -> str:
         "exp": now + timedelta(minutes=settings.access_token_minutes),
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+# Token de aparelho (celular pareado): longo, aleatório e sem validade; vale até o PC
+# desconectar o aparelho. Só o hash vai para o banco.
+DEVICE_TOKEN_PREFIX = "fd_"
+
+
+def new_device_token() -> str:
+    return DEVICE_TOKEN_PREFIX + secrets.token_urlsafe(32)
+
+
+def hash_device_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 def decode_access_token(token: str) -> str:
