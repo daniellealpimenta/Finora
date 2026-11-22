@@ -12,6 +12,7 @@ from app.db.models import (
     Investment,
     SavingsPot,
     Transaction,
+    TransactionSource,
 )
 from app.integrations.pluggy.client import PluggyError
 from app.services import sync as sync_module
@@ -472,3 +473,77 @@ def test_pots_api_create_rename_goal_move_and_delete(client, db, connection, aut
         ).status_code
         == 404
     )
+
+
+def test_manual_entry_is_replaced_by_the_bank_one(db, connection, monkeypatch):
+    """Anotado no celular, confirmado pelo banco: fica um só, com a categoria do celular."""
+    first = FakePluggy([CHECKING, CARD], {"acc-cc": [], "acc-card": []})
+    use_fake(monkeypatch, first)
+    sync_all(db)
+    card = db.scalar(select(Account).where(Account.external_id == "acc-card"))
+    leisure = db.scalar(select(Category).where(Category.key == "leisure"))
+    bought = date.today() - timedelta(days=4)
+    db.add_all(
+        [
+            Transaction(
+                account_id=card.id,
+                external_id="manual:a",
+                source=TransactionSource.MANUAL,
+                date=bought,
+                amount=Decimal("-45.90"),
+                description="CINEMA",
+                category_id=leisure.id,
+                user_categorized=True,
+                need=False,
+            ),
+            # Outro valor: não é o mesmo gasto, continua manual
+            Transaction(
+                account_id=card.id,
+                external_id="manual:b",
+                source=TransactionSource.MANUAL,
+                date=bought,
+                amount=Decimal("-12.00"),
+                description="PIPOCA",
+            ),
+        ]
+    )
+    db.commit()
+
+    second = FakePluggy(
+        [CHECKING, CARD],
+        {"acc-cc": [], "acc-card": [tx("c9", 45.90, "DEBIT", "10000000", description="CINEMARK")]},
+    )
+    use_fake(monkeypatch, second)
+    sync_all(db)
+
+    rows = by_ext(db)
+    assert "manual:a" not in rows
+    assert "manual:b" in rows
+    bank = rows["c9"]
+    assert bank.amount == Decimal("-45.90")
+    assert bank.category_id == leisure.id
+    assert bank.user_categorized is True
+    assert bank.need is False
+
+
+def test_manual_entry_far_from_the_bank_date_stays(db, connection, monkeypatch):
+    use_fake(monkeypatch, FakePluggy([CHECKING, CARD], {"acc-cc": [], "acc-card": []}))
+    sync_all(db)
+    card = db.scalar(select(Account).where(Account.external_id == "acc-card"))
+    db.add(
+        Transaction(
+            account_id=card.id,
+            external_id="manual:old",
+            source=TransactionSource.MANUAL,
+            date=date.today() - timedelta(days=20),
+            amount=Decimal("-45.90"),
+            description="CINEMA",
+        )
+    )
+    db.commit()
+    use_fake(
+        monkeypatch,
+        FakePluggy([CHECKING, CARD], {"acc-cc": [], "acc-card": [tx("c9", 45.90, "DEBIT")]}),
+    )
+    sync_all(db)
+    assert "manual:old" in by_ext(db)

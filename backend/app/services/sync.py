@@ -298,6 +298,7 @@ def _sync_transactions(
         )
     }
     seen: set[str] = set()
+    created: list[Transaction] = []
     fetched = list(pluggy.iter_transactions(account.external_id, date_from=date_from))
     is_card = account.type == AccountType.CREDIT_CARD
     inverted = is_card and card_convention_inverted(fetched)
@@ -319,6 +320,7 @@ def _sync_transactions(
                 account=account, external_id=tx["id"], source=TransactionSource.PLUGGY
             )
             db.add(row)
+            created.append(row)
             result.created += 1
         else:
             result.updated += 1
@@ -340,6 +342,8 @@ def _sync_transactions(
             )
         row.is_transfer = kinds.get(row.category_id) == CategoryKind.TRANSFER
 
+    _reconcile_manual(db, account, created)
+
     stale = [ext_id for ext_id in existing if ext_id not in seen]
     if stale:
         db.execute(
@@ -348,6 +352,43 @@ def _sync_transactions(
             )
         )
         result.deleted += len(stale)
+
+
+# Lançamento anotado no celular que o banco confirma depois: mesma conta, mesmo valor e data
+# a até 3 dias (compra no cartão costuma aparecer com a data do dia seguinte)
+MANUAL_MATCH_DAYS = 3
+
+
+def _reconcile_manual(db: Session, account: Account, created: list[Transaction]) -> None:
+    """Troca cada lançamento manual pelo da Pluggy que chegou agora, para não contar duas
+    vezes. A categoria escolhida no celular passa para o lançamento do banco."""
+    if not created:
+        return
+    manual = list(
+        db.scalars(
+            select(Transaction)
+            .where(
+                Transaction.account_id == account.id,
+                Transaction.source == TransactionSource.MANUAL,
+            )
+            .order_by(Transaction.date, Transaction.id)
+        )
+    )
+    window = timedelta(days=MANUAL_MATCH_DAYS)
+    for row in sorted(created, key=lambda t: t.date):
+        match = next(
+            (m for m in manual if m.amount == row.amount and abs(m.date - row.date) <= window),
+            None,
+        )
+        if match is None:
+            continue
+        manual.remove(match)
+        if match.category_id is not None:
+            row.category_id = match.category_id
+            row.user_categorized = True
+        if match.need is not None:
+            row.need = match.need
+        db.delete(match)
 
 
 def sync_connection(

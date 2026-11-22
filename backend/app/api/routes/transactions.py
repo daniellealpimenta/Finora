@@ -1,3 +1,4 @@
+import uuid
 from datetime import date
 from decimal import Decimal
 
@@ -12,6 +13,7 @@ from app.db.models import (
     CategoryKind,
     CategoryRule,
     Transaction,
+    TransactionSource,
     TransactionStatus,
 )
 from app.services import analytics
@@ -44,6 +46,8 @@ class TransactionOut(BaseModel):
     installment_number: int | None
     installment_total: int | None
     user_categorized: bool
+    # MANUAL = anotado no celular, ainda esperando o banco confirmar
+    source: TransactionSource
 
 
 class TransactionPage(BaseModel):
@@ -58,6 +62,17 @@ class TransactionUpdate(BaseModel):
     # Cria regra "descrição contém <padrão> -> categoria" e aplica nas demais
     create_rule: bool = False
     rule_pattern: str | None = Field(default=None, max_length=255)
+
+
+class TransactionCreate(BaseModel):
+    """Lançamento anotado à mão (app do celular). Negativo = saída. Quando o banco mandar o
+    mesmo gasto, o sync troca este pelo da Pluggy (services/sync.py, _reconcile_manual)."""
+
+    account_id: int
+    date: date
+    amount: Decimal = Field(max_digits=14, decimal_places=2)
+    description: str = Field(min_length=1, max_length=512)
+    category_id: int | None = None
 
 
 class RuleOut(BaseModel):
@@ -83,6 +98,7 @@ def _to_out(t: Transaction) -> TransactionOut:
         installment_number=t.installment_number,
         installment_total=t.installment_total,
         user_categorized=t.user_categorized,
+        source=t.source,
     )
 
 
@@ -223,6 +239,45 @@ def update_transaction(
     db.commit()
     db.refresh(tx)
     return _to_out(tx)
+
+
+@router.post("/transactions", response_model=TransactionOut, status_code=status.HTTP_201_CREATED)
+def create_transaction(body: TransactionCreate, _: CurrentUser, db: DbSession) -> TransactionOut:
+    if body.amount == 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Informe um valor")
+    if db.get(Account, body.account_id) is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Conta inválida")
+    category = db.get(Category, body.category_id) if body.category_id else None
+    if body.category_id and category is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Categoria inválida")
+    tx = Transaction(
+        account_id=body.account_id,
+        external_id=f"manual:{uuid.uuid4()}",
+        source=TransactionSource.MANUAL,
+        date=body.date,
+        amount=body.amount,
+        description=body.description.strip(),
+        category_id=category.id if category else None,
+        user_categorized=category is not None,
+        is_transfer=bool(category and category.kind == CategoryKind.TRANSFER),
+        status=TransactionStatus.POSTED,
+    )
+    db.add(tx)
+    db.commit()
+    db.refresh(tx)
+    return _to_out(tx)
+
+
+@router.delete("/transactions/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_transaction(transaction_id: int, _: CurrentUser, db: DbSession) -> None:
+    """Só lançamentos manuais: os do banco voltariam no próximo sync."""
+    tx = db.get(Transaction, transaction_id)
+    if tx is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Transação não encontrada")
+    if tx.source != TransactionSource.MANUAL:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Só dá para apagar lançamentos manuais")
+    db.delete(tx)
+    db.commit()
 
 
 @router.get("/rules", response_model=list[RuleOut])
