@@ -53,6 +53,24 @@ def _frontend_dir() -> Path | None:
     return path if (path / "index.html").is_file() else None
 
 
+class FrontendFiles(StaticFiles):
+    """Frontend estático com cache que não sobrevive a uma atualização.
+
+    Sem Cache-Control, a WebView (WebKit no Mac, WebView2 no Windows) guarda as páginas por
+    heurística e, depois de instalar uma versão nova, continuava mostrando o Perfil antigo,
+    sem o card Celular. Páginas e payloads (.html, .txt) agora são sempre revalidados pelo
+    ETag; os arquivos de /_next/static/ têm hash no nome e podem ficar em cache para sempre.
+    """
+
+    async def get_response(self, path: str, scope):  # type: ignore[no-untyped-def]
+        response = await super().get_response(path, scope)
+        if path.startswith("_next/static/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def _require_migrated_db() -> None:
     """Código novo com banco antigo faz quase toda rota falhar com "no such column"
     (já aconteceu depois de um pull). Melhor não subir e dizer o que rodar."""
@@ -129,7 +147,7 @@ def create_app() -> FastAPI:
     # Por último: as rotas da API têm prioridade sobre os arquivos do frontend
     frontend = _frontend_dir()
     if frontend:
-        app.mount("/", StaticFiles(directory=frontend, html=True), name="frontend")
+        app.mount("/", FrontendFiles(directory=frontend, html=True), name="frontend")
     return app
 
 

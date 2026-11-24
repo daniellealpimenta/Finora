@@ -58,6 +58,46 @@ def _migrate() -> None:
     migrate.upgrade()
 
 
+BUNDLE_ID = "com.danielleal.finora"  # o mesmo de managerfinance.spec
+
+
+def _web_cache_dirs() -> list[Path]:
+    """Só o cache HTTP da janela. Login, tema e o resto da interface ficam em outro lugar
+    (LocalStorage/cookies) e não são tocados."""
+    if sys.platform == "darwin":
+        return [Path.home() / "Library" / "Caches" / BUNDLE_ID / "WebKit" / "NetworkCache"]
+    profile = DATA_DIR / "webview" / "EBWebView" / "Default"
+    return [profile / "Cache", profile / "Code Cache"]
+
+
+def _clear_web_cache_on_update() -> None:
+    """Versão nova instalada: apaga o cache HTTP da janela uma vez.
+
+    Até a v0.2.3 o frontend ia sem Cache-Control, e o WebKit seguia mostrando páginas da versão
+    anterior depois de atualizar (o Perfil sem o card Celular). O main.py já manda os cabeçalhos
+    certos; isto limpa o que ficou guardado antes deles.
+    """
+    import shutil
+
+    from app.services.updates import current_version
+
+    marker = DATA_DIR / "webview" / "version"
+    version = current_version()
+    try:
+        if marker.read_text(encoding="utf-8").strip() == version:
+            return
+    except OSError:
+        pass
+    for path in _web_cache_dirs():
+        shutil.rmtree(path, ignore_errors=True)
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(version, encoding="utf-8")
+    except OSError:
+        logger.exception("Não deu para gravar a versão do cache da janela")
+    logger.info("Cache da janela limpo para a versão %s", version)
+
+
 def _phone_access_on() -> bool:
     """Opção "Acesso pelo celular" (Perfil). Ligada, a API escuta também fora do 127.0.0.1;
     quem filtra é o app/api/network.py (só Tailscale e só celular pareado)."""
@@ -120,6 +160,8 @@ def main() -> None:
             _alert(str(exc))
             sys.exit(1)
 
+    if server:  # só quem abriu o servidor; outra janela já aberta pode estar usando o cache
+        _clear_web_cache_on_update()
     webview.create_window("Finora", URL, width=1400, height=900, min_size=(1024, 680))
     # Sem modo privado: o que a interface guarda (tema, som, fechamento visto) sobrevive a fechar o
     # programa. O padrão do pywebview é privado e apagava tudo a cada abertura
