@@ -1,18 +1,23 @@
 import type { Metadata } from "next";
-import { Bricolage_Grotesque, Manrope } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const manrope = Manrope({
+// Fontes guardadas no projeto (subconjunto latin, variáveis; licença OFL), para o build não
+// depender do Google Fonts: um download quebrado lá já derrubou o build do macOS no release.
+const manrope = localFont({
   variable: "--font-manrope",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+  src: "./fonts/Manrope-Variable.woff2",
+  weight: "200 800",
+  display: "swap",
 });
 
-// Números grandes e títulos (MASTER.md, "Tipografia"); o texto continua em Manrope
-const bricolage = Bricolage_Grotesque({
+// Números grandes e títulos (MASTER.md, "Tipografia"); o texto continua em Manrope.
+// Variável em peso, tamanho óptico (opsz) e largura (wdth).
+const bricolage = localFont({
   variable: "--font-bricolage",
-  subsets: ["latin"],
-  axes: ["opsz", "wdth"],
+  src: "./fonts/BricolageGrotesque-Variable.woff2",
+  weight: "200 800",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
