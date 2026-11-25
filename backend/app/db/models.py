@@ -164,6 +164,9 @@ class Investment(TimestampMixin, Base):
     amount_original: Mapped[Decimal | None] = mapped_column(Money)
     purchase_date: Mapped[date | None] = mapped_column(Date)
     due_date: Mapped[date | None] = mapped_column(Date)
+    # Dia a que o saldo se refere, segundo o banco (`date` da Pluggy). O PicPay chega a mandar
+    # o saldo do dia 1º do mês por semanas: é assim que o app sabe que o dado está velho
+    balance_date: Mapped[date | None] = mapped_column(Date)
     # Cofrinho a que o usuário ligou esta aplicação (o Open Finance não traz o nome dele)
     pot_id: Mapped[int | None] = mapped_column(
         ForeignKey("savings_pots.id", ondelete="SET NULL"), index=True
@@ -209,6 +212,33 @@ class SavingsPot(TimestampMixin, Base):
     auto_key: Mapped[str | None] = mapped_column(String(160), unique=True)
 
     investments: Mapped[list[Investment]] = relationship(back_populates="pot")
+    checkins: Mapped[list["PotCheckin"]] = relationship(
+        back_populates="pot",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="PotCheckin.day, PotCheckin.id",
+    )
+
+
+class PotCheckin(TimestampMixin, Base):
+    """Saldo do cofrinho informado pelo usuário (o que ele viu no app do banco).
+
+    Nunca substitui o dado do banco: vale enquanto for mais recente que ele, e serve de
+    referência para comparar quando o banco atualizar (app/services/pots.py).
+    """
+
+    __tablename__ = "pot_checkins"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pot_id: Mapped[int] = mapped_column(
+        ForeignKey("savings_pots.id", ondelete="CASCADE"), index=True
+    )
+    day: Mapped[date] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(Money)
+    # O usuário aceitou o valor do banco depois de uma divergência: não compara mais com este
+    dismissed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    pot: Mapped[SavingsPot] = relationship(back_populates="checkins")
 
 
 class CategoryKind(enum.StrEnum):

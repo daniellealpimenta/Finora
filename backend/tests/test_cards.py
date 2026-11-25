@@ -161,3 +161,114 @@ def test_bill_charges_follow_purchases_not_bank_total(db):
     assert (b3["charges"], b3["paid_at"]) == (Decimal("5.90"), date(2026, 8, 7))
     # A primeira do histórico não é "carregada" para as seguintes
     assert by_due[date(2026, 5, 17)]["charges"] == Decimal("100")
+
+
+def test_open_bill_counts_installments_the_bank_has_not_sent_yet(db):
+    """PicPay só manda a parcela do mês quando a fatura fecha; a aberta tem que contar com ela.
+    Sicoob manda as parcelas com a data da compra e a Pluggy apaga a última quando a fatura
+    fecha: a fatura fechada depois dela cobrou a parcela, então o parcelamento acabou."""
+    ensure_categories(db)
+    cat = {c.key: c.id for c in db.scalars(select(Category))}
+    picpay = Account(
+        name="PIC PAY",
+        type=AccountType.CREDIT_CARD,
+        credit_limit=Decimal("10000"),
+        available_credit_limit=Decimal("7836"),
+    )
+    sicoob = Account(
+        name="SICOOB",
+        type=AccountType.CREDIT_CARD,
+        credit_limit=Decimal("2800"),
+        available_credit_limit=Decimal("2800"),  # nada devido: a última foi paga
+    )
+    db.add_all([picpay, sicoob])
+    db.flush()
+    for card, ext, due, total in [
+        (picpay, "p-set", date(2026, 9, 15), "506.70"),
+        (picpay, "p-out", date(2026, 10, 15), "599.07"),
+        (picpay, "p-nov", date(2026, 11, 15), "599.04"),
+        (sicoob, "s-set", date(2026, 9, 11), "100"),
+        (sicoob, "s-out", date(2026, 10, 11), "100"),
+        (sicoob, "s-nov", date(2026, 11, 11), "100"),
+    ]:
+        db.add(
+            CardBill(account_id=card.id, external_id=ext, due_date=due, total_amount=Decimal(total))
+        )
+    n = 0
+
+    def add(card, d, amount, desc, number=None, total=None, bill=None, merchant=None):
+        nonlocal n
+        n += 1
+        db.add(
+            Transaction(
+                account_id=card.id,
+                external_id=f"i{n}",
+                source=TransactionSource.PLUGGY,
+                date=d,
+                amount=Decimal(amount),
+                description=desc,
+                merchant=merchant,
+                category_id=cat["shopping"],
+                status=TransactionStatus.POSTED if bill else TransactionStatus.PENDING,
+                installment_number=number,
+                installment_total=total,
+                raw={"creditCardMetadata": {"billId": bill} if bill else {}},
+            )
+        )
+
+    add(picpay, date(2026, 8, 8), "-506.70", "T CAMPESTRINI PARC01/06", 1, 6, "p-set")
+    add(picpay, date(2026, 9, 10), "-506.66", "T CAMPESTRINI PARC02/06", 2, 6, "p-out")
+    add(picpay, date(2026, 10, 9), "-506.66", "T CAMPESTRINI PARC03/06", 3, 6, "p-nov")
+    # A Pluggy só enriquece o estabelecimento na 1ª: continua sendo a mesma compra
+    add(picpay, date(2026, 9, 21), "-92.41", "APP *VOXOWAPARC01/04", 1, 4, "p-out", "Voxowa")
+    add(picpay, date(2026, 10, 21), "-92.38", "APP *VOXOWAPARC02/04", 2, 4, "p-nov")
+    add(picpay, date(2026, 11, 17), "-179.46", "BRS*SHEINCOM")  # compra à vista na aberta
+    add(sicoob, date(2026, 8, 8), "-100", "T CAMPESTRINI JOIAS", 1, 3, "s-set")
+    add(sicoob, date(2026, 8, 8), "-100", "T CAMPESTRINI JOIAS", 2, 3, "s-out")
+    db.commit()
+
+    by_name = {c["name"]: c for c in cards(db, date(2026, 11, 25))}
+    open_bill = by_name["PIC PAY"]["bills"][0]
+    assert open_bill["status"] == "open"
+    # 179,46 à vista + Campestrini 4/6 + Voxowa 3/4
+    assert open_bill["amount"] == Decimal("179.46") + Decimal("506.66") + Decimal("92.38")
+    latest_sicoob = by_name["SICOOB"]["bills"][0]
+    assert (latest_sicoob["id"], latest_sicoob["status"]) == ("s-nov", "paid")
+
+    found = {(i["name"], i["account_name"]): i for i in analytics.installments(db)}
+    assert set(found) == {("T CAMPESTRINI", "PIC PAY"), ("APP *VOXOWA", "PIC PAY")}
+    assert found[("T CAMPESTRINI", "PIC PAY")]["paid"] == 3
+    assert found[("APP *VOXOWA", "PIC PAY")]["paid"] == 2
+
+
+def test_open_bill_does_not_double_count_an_installment_already_sent(db):
+    ensure_categories(db)
+    shopping = db.scalar(select(Category.id).where(Category.key == "shopping"))
+    card = Account(name="PIC PAY", type=AccountType.CREDIT_CARD)
+    db.add(card)
+    db.flush()
+    db.add(
+        CardBill(account_id=card.id, external_id="b1", due_date=date(2026, 11, 15), total_amount=50)
+    )
+    for i, (d, number, bill) in enumerate(
+        [(date(2026, 10, 9), 1, "b1"), (date(2026, 11, 9), 2, None)]
+    ):
+        db.add(
+            Transaction(
+                account_id=card.id,
+                external_id=f"d{i}",
+                source=TransactionSource.PLUGGY,
+                date=d,
+                amount=Decimal("-50"),
+                description=f"LOJA PARC0{number}/03",
+                category_id=shopping,
+                status=TransactionStatus.POSTED,
+                installment_number=number,
+                installment_total=3,
+                raw={"creditCardMetadata": {"billId": bill} if bill else {}},
+            )
+        )
+    db.commit()
+
+    [c] = cards(db, date(2026, 11, 25))
+    assert c["bills"][0]["amount"] == Decimal("50")

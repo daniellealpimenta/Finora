@@ -986,14 +986,12 @@ export function SavingsCard({
   saved: number;
   month: string;
 }) {
-  const total = pots.reduce((sum, p) => sum + Number(p.balance), 0) + looseTotal;
-  // Banco repetindo o mesmo saldo (Open Finance parado): soma o que cada cofrinho deve ter hoje
-  const frozen = pots.filter((p) => p.estimated_balance && p.frozen_since);
-  const estimated = frozen.length
-    ? total + frozen.reduce((sum, p) => sum + Number(p.estimated_balance) - Number(p.balance), 0)
-    : null;
-  const frozenSince = frozen.map((p) => p.frozen_since!).sort()[0];
-  const reached = pots.find((p) => p.goal_amount && Number(p.balance) >= Number(p.goal_amount));
+  // Saldo que vale de cada cofrinho: do banco, estimado ou informado por você (app/services/pots.py)
+  const total = pots.reduce((sum, p) => sum + Number(p.current_balance), 0) + looseTotal;
+  const estimated = pots.filter((p) => p.source === "estimate");
+  const manual = pots.filter((p) => p.source === "manual").length;
+  const frozenSince = estimated.map((p) => p.bank_as_of!).filter(Boolean).sort()[0];
+  const reached = pots.find((p) => p.goal_amount && Number(p.current_balance) >= Number(p.goal_amount));
   const shown = pots.slice(0, LIST_PREVIEW);
   const [view, setView] = useCardView("savings", ["rings", "list"] as const);
 
@@ -1024,10 +1022,16 @@ export function SavingsCard({
         <>
           <div className="grid gap-0.5">
             <p className="text-[28px] leading-tight font-display font-normal tracking-[-0.02em] tabular">{money(total)}</p>
-            {estimated !== null && (
+            {estimated.length > 0 && frozenSince && (
               <p className="text-xs text-muted">
-                <span className="font-semibold text-positive tabular">≈ {money(estimated)} hoje (estimado).</span> O banco
-                repete o mesmo saldo desde {shortDate(frozenSince)}; a estimativa usa o rendimento médio de cada cofrinho.
+                <span className="font-semibold text-positive">≈ estimado.</span> O banco repete o mesmo saldo desde{" "}
+                {shortDate(frozenSince)}; somei o rendimento médio de cada cofrinho.
+              </p>
+            )}
+            {manual > 0 && (
+              <p className="text-xs text-muted">
+                {manual === 1 ? "1 cofrinho usa o saldo" : `${manual} cofrinhos usam o saldo`} informado por você, até o
+                banco atualizar.
               </p>
             )}
             {Math.abs(saved) >= 0.01 && (
@@ -1044,17 +1048,19 @@ export function SavingsCard({
                 items={shown.map((p, i) => ({
                   key: String(p.id),
                   label: p.name,
-                  value: Number(p.balance),
+                  value: Number(p.current_balance),
                   goal: p.goal_amount ? Number(p.goal_amount) : null,
                   color: ["var(--cat-care)", "var(--cat-home)", "var(--cat-move)", "var(--cat-fun)", "var(--cat-shop)", "var(--cat-food)"][i % 6],
-                  note: p.goal_amount ? `${money(Number(p.balance))} de ${money(Number(p.goal_amount))}` : money(Number(p.balance)),
+                  note: p.goal_amount
+                    ? `${money(Number(p.current_balance))} de ${money(Number(p.goal_amount))}`
+                    : money(Number(p.current_balance)),
                 }))}
               />
             </ViewFade>
           ) : (
           <ul className="grid divide-y divide-border">
             {shown.map((p) => {
-              const balance = Number(p.balance);
+              const balance = Number(p.current_balance);
               const goal = p.goal_amount ? Number(p.goal_amount) : null;
               return (
                 <li key={p.id} className="grid gap-2 py-3 first:pt-0 last:pb-0">

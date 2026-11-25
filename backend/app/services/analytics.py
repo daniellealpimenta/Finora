@@ -29,14 +29,15 @@ from app.db.models import (
     Account,
     AccountType,
     Budget,
+    CardBill,
     Category,
     CategoryKind,
-    Investment,
     Transaction,
     TransactionStatus,
 )
 from app.services import cards as card_service
 from app.services import cycles as cycle_service
+from app.services import pots as pot_service
 from app.services.cycles import ONE_DAY, Cycles, shift_key
 from app.services.periods import add_months, month_key
 
@@ -497,7 +498,8 @@ def summary(db: Session, key: str, today: date) -> dict:
     unpaid = card_service.unpaid_bills(card_list)
     card_debt = sum((b["amount"] for b in unpaid), ZERO)
     # Caixinhas e cofrinhos: dinheiro guardado, fora do que está livre para gastar
-    invested = sum((i.balance for i in db.scalars(select(Investment))), ZERO)
+    # O saldo que vale de cada cofrinho: o do banco, estimado ou informado pelo usuário
+    invested = pot_service.total_saved(db, today)
 
     avg_expense = _average(db, cyc, key, "expense")
     avg_income = _average(db, cyc, key, "income")
@@ -699,7 +701,9 @@ def installments(db: Session) -> list[dict]:
 
     Cada parcela chega como uma transação ("LOJA 2/6"); agrupamos por conta + descrição
     sem o "2/6" + total de parcelas. Pagas = maior número já lançado (POSTED); a parcela
-    da fatura aberta chega PENDING e ainda conta como a pagar. Bancos datam as parcelas de
+    da fatura aberta chega PENDING e ainda conta como a pagar. Também conta como paga cada
+    fatura fechada depois da última parcela com fatura (`cards.billed_installments`): há banco
+    em que a última parcela some da Pluggy quando a fatura fecha. Bancos datam as parcelas de
     jeitos diferentes (mês de cada fatura, ou todas na data da compra), então o mês final
     é uma estimativa.
     """
@@ -713,17 +717,25 @@ def installments(db: Session) -> list[dict]:
     for t, a, c in db.execute(query):
         if c is not None and c.kind != CategoryKind.EXPENSE:
             continue
-        key = (a.id, _normalize(t.merchant or t.description), t.installment_total)
-        groups[key].append((t, a, c))
+        groups[(a.id, card_service.installment_series(t.description, t.installment_total))].append(
+            (t, a, c)
+        )
+    dues: dict[int, dict[str, date]] = defaultdict(dict)
+    for bill in db.scalars(select(CardBill)):
+        dues[bill.account_id][bill.external_id] = bill.due_date
 
     result = []
-    for (_, _, total), rows in groups.items():
+    for (account_id, (_, total)), rows in groups.items():
         # Parcela n lançada = n pagas; parcela n na fatura aberta (PENDING) = n - 1 pagas
         progress = [
             (t.installment_number or 0) - (0 if t.status == TransactionStatus.POSTED else 1)
             for t, _, _ in rows
         ]
-        paid = min(max(max(progress), 0), total)
+        billed = card_service.billed_installments(
+            [(t.installment_number, cycle_service.bill_id_of(t.raw)) for t, _, _ in rows],
+            dues[account_id],
+        )
+        paid = min(max(max(progress), billed or 0, 0), total)
         remaining = total - paid
         if remaining <= 0:
             continue

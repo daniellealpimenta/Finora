@@ -910,7 +910,7 @@ function GroupDialog({
               <option value="">Nenhum</option>
               {pots.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name} ({money(p.balance)})
+                  {p.name} ({money(p.current_balance)})
                 </option>
               ))}
             </select>

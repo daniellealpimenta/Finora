@@ -11,7 +11,11 @@ Por conexão (item da Pluggy):
 Ao final, `link_transfers` reclassifica os pares (fatura paga x pagamento no cartão).
 
 Janela: 12 meses no primeiro sync; depois, desde o último sync menos 30 dias
-(para pegar PENDING -> POSTED e correções feitas pelo banco).
+(para pegar PENDING -> POSTED e correções feitas pelo banco). Cartões usam sempre os 12
+meses: parcelas e lançamentos de fatura vêm com a data da compra (meses atrás) e só ganham
+o `billId` / viram POSTED quando a fatura fecha. Com a janela curta ficavam presos como
+PENDING sem fatura (a fatura fechada perdia a parcela; o parcelamento quitado continuava
+"em andamento"). A busca lê da base da Pluggy, sem gastar os limites do Open Finance.
 """
 
 import logging
@@ -270,6 +274,7 @@ def _sync_investments(
         item.amount_original = _optional_decimal(data.get("amountOriginal"), cents=True)
         item.purchase_date = _optional_date(data.get("purchaseDate"))
         item.due_date = _optional_date(data.get("dueDate"))
+        item.balance_date = _optional_date(data.get("date"))
         if is_new:
             item.pot = _suggested_pot(db, data)
         result.investments += 1
@@ -408,10 +413,12 @@ def sync_connection(
 
     categorizer = Categorizer(db)
     kinds = {c.id: c.kind for c in db.scalars(select(Category))}
+    full_window = started.date() - timedelta(days=FIRST_SYNC_DAYS)
     for data in pluggy.list_accounts(connection.external_id):
         account = _upsert_account(db, connection, data)
         db.flush()
-        _sync_transactions(db, pluggy, account, date_from, categorizer, kinds, result)
+        window = full_window if account.type == AccountType.CREDIT_CARD else date_from
+        _sync_transactions(db, pluggy, account, window, categorizer, kinds, result)
         if account.type == AccountType.CREDIT_CARD:
             _sync_bills(db, pluggy, account)
         result.accounts += 1

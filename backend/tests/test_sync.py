@@ -65,6 +65,7 @@ class FakePluggy:
 
     def iter_transactions(self, account_id, date_from=None, date_to=None):
         self.date_from = date_from
+        self.windows = {**getattr(self, "windows", {}), account_id: date_from}
         return iter(self.transactions.get(account_id, []))
 
 
@@ -204,6 +205,26 @@ def test_resync_updates_deletes_and_keeps_manual_category(db, connection, monkey
     assert (result.created, result.updated, result.deleted) == (1, 2, 1)
     # Segundo sync usa janela curta (último sync - 30 dias), não 12 meses
     assert (date.today() - second.date_from).days <= 31
+
+
+def test_resync_rereads_a_year_of_card_transactions(db, connection, monkeypatch):
+    """Parcela datada na compra (meses atrás) vira POSTED com billId quando a fatura fecha:
+    a janela curta nunca a via e ela ficava PENDING sem fatura para sempre."""
+    old = (date.today() - timedelta(days=100)).isoformat() + "T03:00:00.000Z"
+    pending = tx("p3", -100, "DEBIT", "05000000", date_=old, status="PENDING")
+    first = FakePluggy([CHECKING, CARD], {"acc-cc": [], "acc-card": [pending]})
+    use_fake(monkeypatch, first)
+    sync_all(db)
+
+    posted = {**pending, "status": "POSTED", "creditCardMetadata": {"billId": "b-nov"}}
+    second = FakePluggy([CHECKING, CARD], {"acc-cc": [], "acc-card": [posted]})
+    use_fake(monkeypatch, second)
+    sync_all(db)
+
+    assert (date.today() - second.windows["acc-card"]).days >= 365
+    assert (date.today() - second.windows["acc-cc"]).days <= 31
+    row = by_ext(db)["p3"]
+    assert row.status == "POSTED" and row.raw["creditCardMetadata"]["billId"] == "b-nov"
 
 
 def test_sync_error_is_recorded_per_connection(db, connection, monkeypatch):

@@ -12,6 +12,7 @@ from app.api.deps import CurrentUser, DbSession
 from app.api.numbers import plain
 from app.db.models import SavingsPot, WishGroup, WishItem, WishPrice, WishStatus
 from app.services import affordability
+from app.services import pots as pot_service
 from app.services import wishlist as wish_service
 
 router = APIRouter(tags=["desejos"])
@@ -154,7 +155,8 @@ def _group_out(g: WishGroup, totals: dict) -> GroupOut:
         name=g.name,
         pot_id=g.pot_id,
         pot_name=pot.name if pot else None,
-        pot_balance=sum((i.balance for i in pot.investments), ZERO) if pot else None,
+        # O saldo que vale hoje: do banco, estimado ou informado pelo usuário
+        pot_balance=pot_service.state(pot, date.today()).balance if pot else None,
         total=totals["by_group"].get(g.id, ZERO),
         count=sum(1 for i in g.items if i.status == WishStatus.WANTED),
     )

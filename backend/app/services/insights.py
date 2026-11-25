@@ -9,11 +9,13 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import CategoryKind
+from app.db.models import CategoryKind, SavingsPot
 from app.services import analytics, forecast
 from app.services import cycles as cycle_service
+from app.services import pots as pot_service
 from app.services.cycles import shift_key
 
 ZERO = Decimal("0")
@@ -136,6 +138,55 @@ def _price_increases(rows: list[analytics.Row], recurring: list[dict]) -> list[d
     return out
 
 
+def _short_date(d: date) -> str:
+    return f"{d.day:02d}/{d.month:02d}"
+
+
+def _pot_warnings(db: Session, today: date) -> list[dict]:
+    """Saldo do banco que não bate com o informado, e banco que parou de atualizar."""
+    out = []
+    names = {p.id: p.name for p in db.scalars(select(SavingsPot))}
+    states = pot_service.states(db, today)
+    for pot_id, st in states.items():
+        if st.divergence is None or st.checkin is None:
+            continue
+        more = "a mais" if st.divergence > 0 else "a menos"
+        out.append(
+            _item(
+                "pot_divergence",
+                "warn",
+                f"{names[pot_id]}: o banco não bate com o que você informou",
+                f"O banco diz {brl(st.bank_balance)} em {_short_date(st.bank_as_of or today)}; "
+                f"pelo que você informou em {_short_date(st.checkin.day)}, seriam "
+                f"{brl(st.expected or ZERO)} ({brl(abs(st.divergence))} {more}). Pode ser um "
+                "aporte ou resgate depois disso. Confira em Cofrinhos.",
+            )
+        )
+    stale = [st for st in states.values() if st.stale and st.source != "manual"]
+    if stale:
+        since = min(st.bank_as_of for st in stale if st.bank_as_of)
+        flows = pot_service.unreflected_flows(db, today)
+        moved = sum((f["net"] for f in flows), ZERO)
+        extra = (
+            f" Desde então, o extrato mostra {brl(abs(moved))} em "
+            f"{'aportes' if moved > 0 else 'resgates'} líquidos que ainda não aparecem."
+            if abs(moved) >= 1
+            else ""
+        )
+        count = len(stale)
+        out.append(
+            _item(
+                "pot_stale",
+                "info",
+                f"{count} {'cofrinho' if count == 1 else 'cofrinhos'} sem atualizar pelo banco",
+                f"O banco manda o mesmo saldo desde {_short_date(since)}; o app estima o "
+                f"rendimento desde então.{extra} Informe o saldo atual em Cofrinhos para "
+                "acertar.",
+            )
+        )
+    return out
+
+
 def find(db: Session, today: date) -> list[dict]:
     """Padrões do ciclo atual e dos ciclos fechados recentes, os de atenção primeiro."""
     cyc = cycle_service.load(db)
@@ -203,6 +254,8 @@ def find(db: Session, today: date) -> list[dict]:
                     f"{brl(i['installment_amount'])} por ciclo.",
                 )
             )
+
+    out += _pot_warnings(db, today)
 
     reserve = s["emergency_reserve_months"]
     if reserve is not None and reserve < 3:

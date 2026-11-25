@@ -68,7 +68,7 @@ export function QuickActions({ cards, pots, month }: { cards: CreditCardInfo[]; 
   };
 
   const bill = nextBill(cards);
-  const saved = pots.reduce((sum, p) => sum + Number(p.balance), 0);
+  const saved = pots.reduce((sum, p) => sum + Number(p.current_balance), 0);
 
   return (
     <div ref={root} className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">

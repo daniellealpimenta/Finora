@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, PiggyBank, Plus, Sparkles, Trash2, TrendingUp, Wallet } from "lucide-react";
+import { ArrowLeftRight, Pencil, PiggyBank, Plus, Sparkles, Trash2, TrendingUp, TriangleAlert, Wallet } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Dialog } from "@/components/dialog";
@@ -17,8 +17,9 @@ import {
   Pill,
   cx,
   inputClass,
+  tone,
 } from "@/components/ui";
-import { api, type Investment, type PotYields, type SavingsPot } from "@/lib/api";
+import { api, type Investment, type PotYields, type SavingsPot, type UnreflectedFlow } from "@/lib/api";
 import { earnedText, money, parseMoney, percent, shortDate } from "@/lib/format";
 import { FULL, gsap, useGSAP, usePageEnter } from "@/lib/motion";
 import { notify } from "@/lib/signals";
@@ -36,6 +37,7 @@ const rateText = (i: Investment) =>
 export default function CofrinhosPage() {
   const [pots, setPots] = useState<SavingsPot[] | null>(null);
   const [investments, setInvestments] = useState<Investment[]>([]);
+  const [flows, setFlows] = useState<UnreflectedFlow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [removing, setRemoving] = useState<SavingsPot | null>(null);
@@ -44,9 +46,14 @@ export default function CofrinhosPage() {
   usePageEnter(root, pots !== null);
 
   const load = useCallback(async () => {
-    const [p, inv] = await Promise.all([api<SavingsPot[]>("/pots"), api<Investment[]>("/investments")]);
+    const [p, inv, f] = await Promise.all([
+      api<SavingsPot[]>("/pots"),
+      api<Investment[]>("/investments"),
+      api<UnreflectedFlow[]>("/pots/unreflected"),
+    ]);
     setPots(p);
     setInvestments(inv);
+    setFlows(f);
   }, []);
 
   useEffect(() => {
@@ -57,7 +64,7 @@ export default function CofrinhosPage() {
   const [grown, setGrown] = useState<Record<number, number>>({});
   useEffect(() => {
     if (!pots) return;
-    const now = Object.fromEntries(pots.map((p) => [p.id, Number(p.balance)]));
+    const now = Object.fromEntries(pots.map((p) => [p.id, Number(p.current_balance)]));
     let seen: Record<string, number> | null = null;
     try {
       seen = JSON.parse(localStorage.getItem(SEEN_KEY) ?? "null");
@@ -68,8 +75,10 @@ export default function CofrinhosPage() {
     if (!seen) return;
     const grew: Record<number, number> = {};
     for (const p of pots) {
+      // Saldo informado por você não é rendimento: não comemora
+      if (p.source === "manual") continue;
       const before = seen[p.id];
-      if (before !== undefined && Number(p.balance) - before >= 1) grew[p.id] = Number(p.balance) - before;
+      if (before !== undefined && Number(p.current_balance) - before >= 1) grew[p.id] = Number(p.current_balance) - before;
     }
     setGrown(grew);
     const ids = Object.keys(grew).map(Number);
@@ -101,10 +110,14 @@ export default function CofrinhosPage() {
       potId === null ? "Aplicação tirada do cofrinho." : `Movida para ${pots?.find((p) => p.id === potId)?.name}.`,
     );
 
-  const total = investments.reduce((sum, i) => sum + Number(i.balance), 0);
-  const applied = investments.reduce((sum, i) => sum + Number(i.amount_original ?? i.balance), 0);
   const loose = investments.filter((i) => i.pot_id === null);
   const list = pots ?? [];
+  // Guardado = o saldo que vale de cada cofrinho (banco, estimado ou informado) + as soltas.
+  // O rendimento fica pelo que o banco informa: o informado não diz quanto foi aplicado.
+  const total =
+    list.reduce((sum, p) => sum + Number(p.current_balance), 0) + loose.reduce((sum, i) => sum + Number(i.balance), 0);
+  const bankTotal = investments.reduce((sum, i) => sum + Number(i.balance), 0);
+  const applied = investments.reduce((sum, i) => sum + Number(i.amount_original ?? i.balance), 0);
 
   return (
     <div ref={root}>
@@ -139,11 +152,15 @@ export default function CofrinhosPage() {
               icon={TrendingUp}
               color="var(--positive)"
               label="Já rendeu"
-              value={`${total - applied >= 0 ? "+" : "−"}${money(Math.abs(total - applied))}`}
+              value={`${bankTotal - applied >= 0 ? "+" : "−"}${money(Math.abs(bankTotal - applied))}`}
             />
             <Total icon={Wallet} color="var(--cat-home)" label="Cofrinhos" value={String(list.length)} />
           </div>
         )}
+
+        {flows.map((f) => (
+          <FlowNote key={f.connection_id} flow={f} />
+        ))}
 
         {list.length > 0 && <YieldList pots={list} investments={investments} />}
 
@@ -158,6 +175,15 @@ export default function CofrinhosPage() {
               updatePot(pot, { goal_amount: goal }, goal === null ? "Meta removida." : `Meta de ${pot.name} salva.`)
             }
             onMove={move}
+            onCheckin={(amount) =>
+              run(
+                () => api(`/pots/${pot.id}/checkins`, { method: "POST", body: JSON.stringify({ amount }) }),
+                `Saldo de ${pot.name} anotado. Vale até o banco mandar um mais novo.`,
+              )
+            }
+            onAcceptBank={() =>
+              run(() => api(`/pots/${pot.id}/accept-bank`, { method: "POST" }), `${pot.name} segue o saldo do banco.`)
+            }
             onRemove={() => setRemoving(pot)}
             grew={grown[pot.id]}
           />
@@ -233,6 +259,32 @@ function Total({ icon, color, label, value }: { icon: typeof PiggyBank; color: s
       <span className="text-sm text-muted">{label}</span>
       <span className="ml-auto text-[17px] font-medium tabular">{value}</span>
     </div>
+  );
+}
+
+/** Aportes e resgates no extrato que o banco ainda não mostra nos cofrinhos. */
+function FlowNote({ flow }: { flow: UnreflectedFlow }) {
+  const deposits = Number(flow.deposits);
+  const withdrawals = Number(flow.withdrawals);
+  const parts = [
+    deposits > 0 && `${money(deposits)} em aportes`,
+    withdrawals > 0 && `${money(withdrawals)} em resgates`,
+  ].filter(Boolean);
+  return (
+    <Card data-enter className="flex items-start gap-3">
+      <IconBadge icon={ArrowLeftRight} color="var(--warning)" size="sm" />
+      <div className="grid gap-1 text-sm">
+        <p className="font-semibold">
+          {flow.bank} não atualiza os cofrinhos desde {shortDate(flow.since)}
+        </p>
+        <p className="text-muted">
+          Desde então, o extrato mostra {parts.join(" e ")} ({flow.count}{" "}
+          {flow.count === 1 ? "movimento" : "movimentos"}) que ainda não aparecem aqui. O extrato não diz para qual
+          cofrinho foi cada um: use <strong>Informar saldo</strong> em cada cofrinho com o valor do app do banco. Quando
+          o banco voltar a atualizar, o app compara os dois e avisa se não baterem.
+        </p>
+      </div>
+    </Card>
   );
 }
 
@@ -319,6 +371,8 @@ function PotCard({
   onRename,
   onGoal,
   onMove,
+  onCheckin,
+  onAcceptBank,
   onRemove,
   grew,
 }: {
@@ -328,6 +382,8 @@ function PotCard({
   onRename: (name: string) => Promise<void>;
   onGoal: (goal: number | null) => Promise<void>;
   onMove: (inv: Investment, potId: number | null) => Promise<void>;
+  onCheckin: (amount: number) => Promise<void>;
+  onAcceptBank: () => Promise<void>;
   onRemove: () => void;
   /** Quanto cresceu desde a última visita: uma moeda cai no saldo. */
   grew?: number;
@@ -354,7 +410,11 @@ function PotCard({
   const [editingGoal, setEditingGoal] = useState(false);
   const [goalDraft, setGoalDraft] = useState("");
   const [goalError, setGoalError] = useState<string | null>(null);
-  const balance = Number(pot.balance);
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [checkinDraft, setCheckinDraft] = useState("");
+  const [checkinError, setCheckinError] = useState<string | null>(null);
+  const balance = Number(pot.current_balance);
+  const bank = Number(pot.balance);
   const goal = pot.goal_amount ? Number(pot.goal_amount) : null;
   const done = goal !== null && balance >= goal;
 
@@ -421,19 +481,105 @@ function PotCard({
           <p data-balance className="origin-right text-[28px] leading-tight font-display font-normal tracking-[-0.02em] tabular">
             {money(balance)}
           </p>
-          {pot.estimated_balance && pot.frozen_since && (
-            <p
-              className="text-right text-xs font-semibold text-positive tabular"
-              title={`O banco repete o mesmo saldo desde ${shortDate(pot.frozen_since)}. A estimativa usa o rendimento médio por dia útil deste cofrinho.`}
-            >
-              ≈ {money(pot.estimated_balance)} hoje (estimado)
-            </p>
-          )}
+          <BalanceSource pot={pot} bank={bank} />
         </div>
         <IconButton label={`Apagar ${pot.name}`} onClick={onRemove}>
           <Trash2 />
         </IconButton>
       </div>
+
+      {pot.divergence !== null && pot.checkin && (
+        <div
+          role="alert"
+          style={tone("var(--warning)")}
+          className="tint grid gap-2 rounded-control px-3 py-2.5 text-sm"
+        >
+          <p className="flex items-start gap-2 font-medium">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <span>
+              O banco diz {money(bank)}
+              {pot.bank_as_of ? ` em ${shortDate(pot.bank_as_of)}` : ""}. Pelo que você informou em{" "}
+              {shortDate(pot.checkin.day)}, seriam {money(pot.expected ?? 0)} ({money(Math.abs(Number(pot.divergence)))}{" "}
+              {Number(pot.divergence) > 0 ? "a mais" : "a menos"} no banco). Pode ser um aporte ou resgate depois disso.
+            </span>
+          </p>
+          <div className="flex flex-wrap gap-2 pl-6">
+            <Button variant="primary" className="min-h-9" onClick={onAcceptBank}>
+              Usar o do banco
+            </Button>
+            <Button
+              variant="ghost"
+              className="min-h-9"
+              onClick={() => {
+                setCheckinDraft("");
+                setCheckingIn(true);
+              }}
+            >
+              Informar de novo
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {checkingIn ? (
+        <form
+          className="flex flex-wrap items-center gap-2"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const value = parseMoney(checkinDraft);
+            if (value === null || Number.isNaN(value) || value < 0) {
+              setCheckinError("Use só números, como 21300 ou 21.300,00.");
+              return;
+            }
+            await onCheckin(value);
+            setCheckinError(null);
+            setCheckingIn(false);
+          }}
+        >
+          <label htmlFor={`pot-checkin-${pot.id}`} className="text-sm text-muted">
+            Saldo hoje no app do banco
+          </label>
+          <input
+            id={`pot-checkin-${pot.id}`}
+            autoFocus
+            inputMode="decimal"
+            placeholder={money(balance)}
+            className={cx(inputClass, "min-h-9 w-40 text-right tabular")}
+            value={checkinDraft}
+            onChange={(e) => setCheckinDraft(e.target.value)}
+          />
+          <Button type="submit" variant="primary" className="min-h-9">
+            Salvar
+          </Button>
+          <Button type="button" variant="ghost" className="min-h-9" onClick={() => setCheckingIn(false)}>
+            Cancelar
+          </Button>
+          {checkinError && <p className="w-full text-xs font-semibold text-negative">{checkinError}</p>}
+          <p className="w-full text-xs text-muted">
+            Não apaga o dado do banco: vale até ele mandar um saldo mais novo, e aí o app compara os dois.
+          </p>
+        </form>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm text-muted">
+            {pot.source === "manual"
+              ? "Mudou no app do banco? Atualize o saldo informado."
+              : pot.stale
+                ? "O banco está atrasado? Anote o saldo que você vê no app dele."
+                : "Saldo diferente no app do banco?"}
+          </span>
+          <button
+            type="button"
+            className="rounded-chip px-2 py-1 text-sm font-semibold text-accent hover:bg-surface-2"
+            onClick={() => {
+              setCheckinDraft("");
+              setCheckingIn(true);
+            }}
+          >
+            Informar saldo
+          </button>
+        </div>
+      )}
 
       <div className="grid gap-2">
         {goal !== null && (
@@ -508,6 +654,42 @@ function PotCard({
       {items.length > 0 && <Applications items={items} pots={pots} onMove={onMove} />}
     </Card>
   );
+}
+
+/** De onde vem o saldo mostrado: do banco, estimado a partir dele ou informado pelo usuário. */
+function BalanceSource({ pot, bank }: { pot: SavingsPot; bank: number }) {
+  const asOf = pot.bank_as_of ? shortDate(pot.bank_as_of) : null;
+  if (pot.source === "manual" && pot.checkin) {
+    return (
+      <div className="text-right text-xs text-muted tabular">
+        <p className="font-semibold text-foreground">informado por você em {shortDate(pot.checkin.day)}</p>
+        {Math.abs(bank - Number(pot.current_balance)) >= 0.01 && (
+          <p>
+            o banco ainda mostra {money(bank)}
+            {asOf ? ` (dado de ${asOf})` : ""}
+          </p>
+        )}
+      </div>
+    );
+  }
+  if (pot.source === "estimate") {
+    return (
+      <div
+        className="text-right text-xs text-muted tabular"
+        title="A estimativa soma ao saldo do banco o rendimento médio por dia útil deste cofrinho."
+      >
+        <p className="font-semibold text-positive">≈ estimado com o rendimento</p>
+        <p>
+          o banco mostra {money(bank)}
+          {asOf ? ` desde ${asOf}` : ""}
+        </p>
+      </div>
+    );
+  }
+  if (pot.stale && asOf) {
+    return <p className="text-right text-xs text-muted tabular">segundo o banco, em {asOf}</p>;
+  }
+  return null;
 }
 
 const weekday = (iso: string) =>

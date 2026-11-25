@@ -3,7 +3,9 @@
 - Faturas fechadas vêm da Pluggy (GET /bills): vencimento, total e pagamento mínimo. O
   fechamento é estimado pelo calendário do cartão (app/services/cycles.py).
 - A fatura aberta é calculada: compras do cartão que ainda não têm `billId`
-  (creditCardMetadata) e entram na próxima fatura a fechar.
+  (creditCardMetadata) e entram na próxima fatura a fechar, mais a parcela do mês de cada
+  compra parcelada. Bancos como o PicPay só mandam essa parcela quando a fatura fecha, então,
+  se ela ainda não chegou, entra estimada pelo valor da parcela anterior.
 - Paga: os pagamentos recebidos no cartão (categoria "Pagamento de fatura") perto do
   vencimento cobrem o total. Cada pagamento quita no máximo uma fatura. Só a última fatura
   fechada pode estar em aberto: uma não paga é cobrada na seguinte.
@@ -15,6 +17,8 @@
   setembro" (ciclo de 09/09 a 08/10).
 """
 
+import re
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
@@ -44,6 +48,37 @@ class _Purchase:
     amount: Decimal
     bill_id: str | None
     is_payment: bool
+    series: tuple | None = None  # compra parcelada: (descrição sem "2/6", total de parcelas)
+    number: int | None = None  # número desta parcela
+
+
+def installment_series(description: str | None, total: int | None) -> tuple | None:
+    """Chave das parcelas de uma mesma compra: a descrição sem números/códigos + o total.
+
+    Pela descrição, não pelo `merchant`: a Pluggy enriquece o estabelecimento só em algumas
+    parcelas ("Shein" na 1/2, vazio na 2/2), o que partia a compra em duas.
+    """
+    if not total or total <= 1:
+        return None
+    text = (description or "").casefold()
+    text = re.sub(r"\d+/\d+", " ", text)
+    text = re.sub(r"[\d*#.\-_/]+", " ", text)
+    return (re.sub(r"\s+", " ", text).strip(), total)
+
+
+def billed_installments(rows: list[tuple[int, str | None]], dues: dict[str, date]) -> int | None:
+    """Última parcela já cobrada numa fatura fechada, ou None se nenhuma tem fatura.
+
+    `rows` são (número da parcela, billId) de uma compra; `dues`, billId -> vencimento das
+    faturas fechadas do cartão. Cada fatura fechada depois da última parcela com fatura cobrou
+    mais uma: o Sicoob manda as parcelas com a data da compra e a Pluggy apaga a última quando
+    a fatura fecha, sem devolvê-la dentro da fatura.
+    """
+    anchored = [(n, dues[b]) for n, b in rows if n and b in dues]
+    if not anchored:
+        return None
+    number, due = max(anchored, key=lambda a: (a[1], a[0]))
+    return number + sum(1 for d in dues.values() if d > due)
 
 
 def short_bank_name(name: str) -> str:
@@ -80,6 +115,8 @@ def _purchases(db: Session, account: Account, card_payment_id: int | None) -> li
                 amount=t.amount,
                 bill_id=cycle_service.bill_id_of(t.raw),
                 is_payment=t.category_id == card_payment_id and t.amount > 0,
+                series=installment_series(t.description, t.installment_total),
+                number=t.installment_number,
             )
         )
     return result
@@ -95,6 +132,14 @@ def card_overview(
     used_payments: set[int] = set()
 
     closed = sorted(account.bills, key=lambda b: b.due_date)
+    # Limite todo livre: não há nada a pagar, mesmo sem achar o pagamento no cartão (fatura
+    # paga por outra conta, como no Sicoob). Só com limite e disponível informados: sem eles
+    # o saldo zerado pode ser falta de dado
+    nothing_owed = (
+        account.credit_limit is not None
+        and account.available_credit_limit is not None
+        and account.credit_limit - account.available_credit_limit <= PAID_TOLERANCE
+    )
     bills: list[dict] = []
     previous_paid = True
     # Faturas anteriores sem pagamento: o banco as cobra na seguinte, e o pagamento dela as quita
@@ -132,7 +177,7 @@ def card_overview(
         # aberto; as anteriores sem pagamento identificado (pago por outra conta, fora da
         # janela do sync) contam como pagas
         is_latest = n == len(closed) - 1
-        settled = paid_at is not None or charges <= PAID_TOLERANCE or not is_latest
+        settled = paid_at is not None or charges <= PAID_TOLERANCE or not is_latest or nothing_owed
         if settled:
             status = "paid"
         else:
@@ -166,7 +211,8 @@ def card_overview(
             and p.date <= today
             and cyc.competence(account.id, p.date, None) == open_close
         ]
-        open_amount: Decimal = -sum((p.amount for p in open_items), ZERO)
+        projected = _open_installments(purchases, open_items, schedule.bill_dues)
+        open_amount: Decimal = -sum((p.amount for p in open_items), ZERO) + projected
         open_count: int | None = len(open_items)
         open_due = schedule.next_due_after(open_close)
     else:
@@ -218,6 +264,27 @@ def card_overview(
         # Mais recente primeiro: a aberta, depois as fechadas
         "bills": list(reversed(bills)),
     }
+
+
+def _open_installments(
+    purchases: list[_Purchase], open_items: list[_Purchase], dues: dict[str, date]
+) -> Decimal:
+    """Parcelas que caem na fatura aberta mas ainda não estão nas compras dela."""
+    series: dict[tuple, list[_Purchase]] = defaultdict(list)
+    for p in purchases:
+        if p.series and not p.is_payment:
+            series[p.series].append(p)
+    in_open = {(p.series, p.number) for p in open_items if p.series}
+    total = ZERO
+    for key, rows in series.items():
+        billed = billed_installments([(p.number, p.bill_id) for p in rows], dues)
+        if billed is None or billed >= key[1] or (key, billed + 1) in in_open:
+            continue
+        # A própria parcela, se já veio (com a data da compra); senão, a anterior
+        same = [p for p in rows if p.number == billed + 1 and p.bill_id is None]
+        model = same[0] if same else max(rows, key=lambda p: (p.number or 0, p.date))
+        total += -model.amount
+    return total
 
 
 def cards(db: Session, today: date, cyc: Cycles | None = None) -> list[dict]:

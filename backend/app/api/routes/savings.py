@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession
 from app.db.models import Investment, SavingsPot
+from app.services import pots as pot_service
 from app.services import yields
 
 router = APIRouter(tags=["cofrinhos"])
@@ -28,11 +29,18 @@ class InvestmentOut(BaseModel):
     amount_original: Decimal | None
     purchase_date: date | None
     due_date: date | None
+    balance_date: date | None
     pot_id: int | None
 
 
 class InvestmentUpdate(BaseModel):
     pot_id: int | None = None
+
+
+class CheckinOut(BaseModel):
+    id: int
+    day: date
+    amount: Decimal
 
 
 class PotOut(BaseModel):
@@ -47,6 +55,31 @@ class PotOut(BaseModel):
     # O banco repete o mesmo saldo desde esta data; estimated_balance é o que deve estar hoje
     frozen_since: date | None = None
     estimated_balance: Decimal | None = None
+    # Saldo que vale hoje (app/services/pots.py): do banco, estimado ou informado pelo usuário
+    current_balance: Decimal
+    source: str  # bank, estimate, manual
+    bank_as_of: date | None
+    stale: bool
+    checkin: CheckinOut | None = None
+    # Banco atualizou e não bateu com o informado: banco − informado (levado ao dia do banco)
+    divergence: Decimal | None = None
+    expected: Decimal | None = None
+
+
+class CheckinIn(BaseModel):
+    amount: Decimal = Field(ge=0, le=Decimal("999999999999"))
+    # Dia em que o usuário viu esse saldo no app do banco; padrão hoje
+    day: date | None = None
+
+
+class FlowOut(BaseModel):
+    connection_id: int
+    bank: str
+    since: date
+    deposits: Decimal
+    withdrawals: Decimal
+    net: Decimal
+    count: int
 
 
 class PotIn(BaseModel):
@@ -75,6 +108,7 @@ def _investment_out(i: Investment) -> InvestmentOut:
         amount_original=i.amount_original,
         purchase_date=i.purchase_date,
         due_date=i.due_date,
+        balance_date=i.balance_date,
         pot_id=i.pot_id,
     )
 
@@ -87,7 +121,9 @@ def applied_amount(i: Investment) -> Decimal:
 def _pot_out(pot: SavingsPot) -> PotOut:
     balance = sum((i.balance for i in pot.investments), Decimal("0"))
     applied = sum((applied_amount(i) for i in pot.investments), Decimal("0"))
-    frozen_since, estimated = yields.frozen_estimate(pot, date.today())
+    today = date.today()
+    st = pot_service.state(pot, today)
+    estimated = st.balance if st.source == "estimate" else None
     return PotOut(
         id=pot.id,
         name=pot.name,
@@ -96,8 +132,17 @@ def _pot_out(pot: SavingsPot) -> PotOut:
         applied=applied,
         earned=balance - applied,
         investments=len(pot.investments),
-        frozen_since=frozen_since,
+        frozen_since=st.bank_as_of if estimated is not None else None,
         estimated_balance=estimated,
+        current_balance=st.balance,
+        source=st.source,
+        bank_as_of=st.bank_as_of,
+        stale=st.stale,
+        checkin=CheckinOut(id=st.checkin.id, day=st.checkin.day, amount=st.checkin.amount)
+        if st.checkin
+        else None,
+        divergence=st.divergence,
+        expected=st.expected,
     )
 
 
@@ -155,7 +200,37 @@ def pot_yields(pot_id: int, _: CurrentUser, db: DbSession) -> PotYieldsOut:
 def list_pots(_: CurrentUser, db: DbSession) -> list[PotOut]:
     """Cofrinhos com saldo somado das aplicações, maior saldo primeiro."""
     pots = [_pot_out(p) for p in db.scalars(select(SavingsPot))]
-    return sorted(pots, key=lambda p: p.balance, reverse=True)
+    return sorted(pots, key=lambda p: p.current_balance, reverse=True)
+
+
+@router.get("/pots/unreflected", response_model=list[FlowOut])
+def unreflected(_: CurrentUser, db: DbSession) -> list[FlowOut]:
+    """Aportes e resgates no extrato que o banco ainda não mostra nos cofrinhos."""
+    return [FlowOut(**f) for f in pot_service.unreflected_flows(db, date.today())]
+
+
+@router.post("/pots/{pot_id}/checkins", response_model=PotOut, status_code=status.HTTP_201_CREATED)
+def add_checkin(pot_id: int, body: CheckinIn, _: CurrentUser, db: DbSession) -> PotOut:
+    """Saldo que o usuário vê no app do banco. Vale até o banco mandar um saldo mais novo."""
+    today = date.today()
+    day = body.day or today
+    if day > today:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "A data não pode ser futura")
+    pot = _get_pot(db, pot_id)
+    pot_service.add_checkin(db, pot, body.amount, day)
+    db.commit()
+    db.refresh(pot)
+    return _pot_out(pot)
+
+
+@router.post("/pots/{pot_id}/accept-bank", response_model=PotOut)
+def accept_bank(pot_id: int, _: CurrentUser, db: DbSession) -> PotOut:
+    """Usa o valor do banco: os saldos informados deixam de valer e de ser comparados."""
+    pot = _get_pot(db, pot_id)
+    pot_service.accept_bank(pot)
+    db.commit()
+    db.refresh(pot)
+    return _pot_out(pot)
 
 
 @router.post("/pots", response_model=PotOut, status_code=status.HTTP_201_CREATED)

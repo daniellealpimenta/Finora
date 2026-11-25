@@ -189,6 +189,29 @@ export type SavingsPot = {
   frozen_since?: string | null;
   /** Quanto deve estar hoje, pela média de rendimento por dia útil */
   estimated_balance?: string | null;
+  /** Saldo que vale hoje: do banco, estimado (banco + rendimento) ou informado pelo usuário */
+  current_balance: string;
+  source: "bank" | "estimate" | "manual";
+  /** Dia a que o saldo do banco se refere */
+  bank_as_of: string | null;
+  /** O banco não atualiza o saldo há alguns dias úteis */
+  stale: boolean;
+  /** Último saldo informado pelo usuário ainda em uso */
+  checkin: { id: number; day: string; amount: string } | null;
+  /** Banco atualizou e não bateu com o informado: banco − informado (levado ao dia do banco) */
+  divergence: string | null;
+  expected: string | null;
+};
+
+/** GET /pots/unreflected: aportes e resgates no extrato que o banco ainda não mostra nos cofrinhos */
+export type UnreflectedFlow = {
+  connection_id: number;
+  bank: string;
+  since: string;
+  deposits: string;
+  withdrawals: string;
+  net: string;
+  count: number;
 };
 
 export type WishStatus = "WANTED" | "BOUGHT" | "DROPPED";
