@@ -305,15 +305,18 @@ export default function ContasPage() {
                 ) : (
                   <IconBadge icon={Landmark} color="var(--cat-fun)" />
                 )}
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 basis-44">
                   <h2 className="truncate font-semibold">{c.institution_name}</h2>
                   <p className="text-xs text-muted">Último sync: {dateTime(c.last_synced_at)}</p>
                 </div>
-                <Pill status={status}>{label}</Pill>
-                <Button variant="danger" onClick={() => setRemoving(c)}>
-                  <Trash2 />
-                  Remover
-                </Button>
+                {/* Sem espaço (celular), status e Remover descem juntos para a linha de baixo */}
+                <div className="ml-auto flex items-center gap-2">
+                  <Pill status={status}>{label}</Pill>
+                  <Button variant="danger" onClick={() => setRemoving(c)}>
+                    <Trash2 />
+                    Remover
+                  </Button>
+                </div>
               </div>
               {c.last_sync_error && <ErrorNote>{c.last_sync_error}</ErrorNote>}
               <AccountList accounts={c.accounts} cards={cards} onClosingDay={saveClosingDay} />

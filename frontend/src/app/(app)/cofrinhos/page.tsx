@@ -420,9 +420,11 @@ function PotCard({
 
   return (
     <Card data-enter className="grid gap-4">
-      <div className="flex flex-wrap items-center gap-3">
+      {/* Celular: ícone, nome e lixeira em cima, saldo embaixo. Desktop: saldo à direita, alinhado
+          pelo topo com o nome e a lixeira. */}
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-3 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
         <IconBadge icon={PiggyBank} color={POT_COLOR} />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0">
           {renaming ? (
             <form
               className="flex flex-wrap items-center gap-2"
@@ -470,7 +472,10 @@ function PotCard({
             )}
           </p>
         </div>
-        <div ref={coinBox} className="relative">
+        <div
+          ref={coinBox}
+          className="relative order-last col-span-3 grid justify-items-start sm:order-none sm:col-span-1 sm:justify-items-end sm:text-right"
+        >
           {grew !== undefined && (
             <span
               data-coin
@@ -478,7 +483,10 @@ function PotCard({
               className="invisible absolute -top-1 left-1/2 -ml-3 size-6 rounded-full bg-[var(--coin)] shadow-[inset_0_0_0_2px_var(--coin-line)]"
             />
           )}
-          <p data-balance className="origin-right text-[28px] leading-tight font-display font-normal tracking-[-0.02em] tabular">
+          <p
+            data-balance
+            className="origin-left text-[28px] leading-none font-display font-normal tracking-[-0.02em] tabular sm:origin-right sm:pt-0.5"
+          >
             {money(balance)}
           </p>
           <BalanceSource pot={pot} bank={bank} />
@@ -570,7 +578,7 @@ function PotCard({
           </span>
           <button
             type="button"
-            className="rounded-chip px-2 py-1 text-sm font-semibold text-accent hover:bg-surface-2"
+            className="-mx-2 rounded-chip px-2 py-1 text-sm font-semibold text-accent hover:bg-surface-2"
             onClick={() => {
               setCheckinDraft("");
               setCheckingIn(true);
@@ -633,7 +641,7 @@ function PotCard({
             )}
             <button
               type="button"
-              className="rounded-chip px-2 py-1 text-sm font-semibold text-accent hover:bg-surface-2"
+              className="-mx-2 rounded-chip px-2 py-1 text-sm font-semibold text-accent hover:bg-surface-2"
               onClick={() => {
                 setGoalDraft(goal ? String(goal).replace(".", ",") : "");
                 setEditingGoal(true);
@@ -661,7 +669,7 @@ function BalanceSource({ pot, bank }: { pot: SavingsPot; bank: number }) {
   const asOf = pot.bank_as_of ? shortDate(pot.bank_as_of) : null;
   if (pot.source === "manual" && pot.checkin) {
     return (
-      <div className="text-right text-xs text-muted tabular">
+      <div className="mt-1 text-xs text-muted tabular">
         <p className="font-semibold text-foreground">informado por você em {shortDate(pot.checkin.day)}</p>
         {Math.abs(bank - Number(pot.current_balance)) >= 0.01 && (
           <p>
@@ -675,7 +683,7 @@ function BalanceSource({ pot, bank }: { pot: SavingsPot; bank: number }) {
   if (pot.source === "estimate") {
     return (
       <div
-        className="text-right text-xs text-muted tabular"
+        className="mt-1 text-xs text-muted tabular"
         title="A estimativa soma ao saldo do banco o rendimento médio por dia útil deste cofrinho."
       >
         <p className="font-semibold text-positive">≈ estimado com o rendimento</p>
@@ -687,7 +695,7 @@ function BalanceSource({ pot, bank }: { pot: SavingsPot; bank: number }) {
     );
   }
   if (pot.stale && asOf) {
-    return <p className="text-right text-xs text-muted tabular">segundo o banco, em {asOf}</p>;
+    return <p className="mt-1 text-xs text-muted tabular">segundo o banco, em {asOf}</p>;
   }
   return null;
 }
@@ -718,22 +726,31 @@ function DailyYields({ potId }: { potId: number }) {
       className="group rounded-control bg-surface-2/60 open:bg-transparent"
       onToggle={(e) => (e.currentTarget as HTMLDetailsElement).open && load()}
     >
-      <summary className="flex min-h-10 items-center rounded-control px-3 text-sm font-semibold text-muted hover:text-foreground">
+      <summary className="flex min-h-10 items-center rounded-control px-3 text-sm font-semibold text-muted group-open:px-0 hover:text-foreground">
         Ver rendimentos diários
       </summary>
-      <div className="mt-2 grid gap-3 px-1">
+      <div className="mt-2 grid gap-3">
         {error && <ErrorNote>{error}</ErrorNote>}
         {!data && !error && <p className="text-sm text-muted">Carregando…</p>}
         {data && (
           <>
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <span className="text-[22px] font-display font-normal tracking-[-0.02em] text-positive tabular">
-                +{money(average)}
-              </span>
-              <span className="text-sm text-muted">
-                por dia útil, ~{money(average * 21)} por mês. Média desde cada aplicação, antes do IR.
-              </span>
-            </div>
+            {average >= 0 ? (
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className="text-[22px] font-display font-normal tracking-[-0.02em] text-positive tabular">
+                  +{money(average)}
+                </span>
+                <span className="text-sm text-muted">
+                  por dia útil, ~{money(average * 21)} por mês. Média desde cada aplicação, antes do IR.
+                </span>
+              </div>
+            ) : (
+              // Saldo abaixo do aplicado não é rendimento negativo: quase sempre é um resgate parcial
+              // que o banco não desconta do valor aplicado
+              <p className="text-sm text-muted">
+                Sem média de rendimento: o saldo está abaixo do valor aplicado, provavelmente por um resgate parcial
+                que o banco não desconta do aplicado.
+              </p>
+            )}
             {data.daily.length === 0 ? (
               <p className="text-sm text-muted">
                 O app começou a registrar o saldo
@@ -787,7 +804,7 @@ function Applications({
 }) {
   return (
     <details className="group rounded-control bg-surface-2/60 open:bg-transparent">
-      <summary className="flex min-h-10 items-center rounded-control px-3 text-sm font-semibold text-muted hover:text-foreground">
+      <summary className="flex min-h-10 items-center rounded-control px-3 text-sm font-semibold text-muted group-open:px-0 hover:text-foreground">
         {items.length === 1 ? "Ver a aplicação" : `Ver as ${items.length} aplicações`}
       </summary>
       <ul className="mt-1 grid divide-y divide-border">

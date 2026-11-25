@@ -48,7 +48,7 @@ function BillChip({ status }: { status: BillStatus }) {
   return (
     <span
       style={tone(s ? STATUS_COLOR[s] : "var(--accent)")}
-      className="tint inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap"
+      className="tint inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap"
     >
       {s ? <StatusShape status={s} className="size-2.5" /> : <span className="size-2 rounded-full bg-[var(--c)]" aria-hidden />}
       {BILL_LABEL[status]}
@@ -99,8 +99,10 @@ export function BillsCard({ cards }: { cards: CreditCardInfo[] }) {
               <li key={b.key} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
                 <IconBadge icon={CreditCard} color="var(--cat-move)" />
                 <div className="min-w-0 flex-1">
-                  <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                    <span className="truncate font-medium">{billTitle(b.competence)}</span>
+                  {/* Etiqueta sempre no mesmo lugar: embaixo do título no celular, ao lado no desktop
+                      (com flex-wrap ela pulava de linha só nas faturas de valor maior) */}
+                  <p className="flex flex-col items-start gap-x-2 gap-y-0.5 sm:flex-row sm:items-center">
+                    <span className="max-w-full truncate font-medium">{billTitle(b.competence)}</span>
                     <BillChip status={b.status} />
                   </p>
                   <p className="truncate text-xs text-muted">
